@@ -25,6 +25,16 @@ async def test_health_endpoint(client):
 
 
 @pytest.mark.asyncio
+async def test_captcha_endpoint(client):
+    response = await client.get("/api/auth/captcha")
+    assert response.status_code == 200
+    data = response.json()
+    assert "session_key" in data
+    assert "captcha_image" in data
+    assert len(data["captcha_image"]) > 0
+
+
+@pytest.mark.asyncio
 async def test_login_missing_body(client):
     response = await client.post("/api/auth/login", json={})
     assert response.status_code == 422

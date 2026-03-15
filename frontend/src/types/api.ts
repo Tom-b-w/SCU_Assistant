@@ -10,6 +10,8 @@ export interface User {
 export interface LoginRequest {
   student_id: string;
   password: string;
+  captcha: string;
+  session_key: string;
 }
 
 export interface TokenResponse {

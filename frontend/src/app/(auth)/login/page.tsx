@@ -1,21 +1,43 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useAuthStore } from "@/stores/auth-store";
-import { login } from "@/lib/auth";
-import { GraduationCap, Loader2, Eye, EyeOff, Sparkles } from "lucide-react";
+import { login, getCaptcha } from "@/lib/auth";
+import { GraduationCap, Loader2, Eye, EyeOff, Sparkles, RefreshCw } from "lucide-react";
 
 export default function LoginPage() {
   const router = useRouter();
   const setUser = useAuthStore((state) => state.setUser);
   const [studentId, setStudentId] = useState("");
   const [password, setPassword] = useState("");
+  const [captcha, setCaptcha] = useState("");
+  const [sessionKey, setSessionKey] = useState("");
+  const [captchaImage, setCaptchaImage] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const [captchaLoading, setCaptchaLoading] = useState(false);
+
+  const fetchCaptcha = useCallback(async () => {
+    setCaptchaLoading(true);
+    setCaptcha("");
+    try {
+      const data = await getCaptcha();
+      setSessionKey(data.session_key);
+      setCaptchaImage(data.captcha_image);
+    } catch {
+      setError("获取验证码失败，请检查网络连接");
+    } finally {
+      setCaptchaLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchCaptcha();
+  }, [fetchCaptcha]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -23,11 +45,19 @@ export default function LoginPage() {
     setLoading(true);
 
     try {
-      const data = await login({ student_id: studentId, password });
+      const data = await login({
+        student_id: studentId,
+        password,
+        captcha,
+        session_key: sessionKey,
+      });
       setUser(data.user, data.access_token);
       router.push("/");
     } catch (err: any) {
-      setError(err.response?.data?.error?.message || "登录失败，请检查学号和密码");
+      const msg = err.response?.data?.error?.message || "登录失败，请检查学号、密码和验证码";
+      setError(msg);
+      // 登录失败后刷新验证码
+      fetchCaptcha();
     } finally {
       setLoading(false);
     }
@@ -90,6 +120,43 @@ export default function LoginPage() {
             </div>
           </div>
 
+          {/* Captcha */}
+          <div className="space-y-2">
+            <label htmlFor="captcha" className="text-sm font-medium text-white/80">
+              验证码
+            </label>
+            <div className="flex gap-3">
+              <Input
+                id="captcha"
+                placeholder="请输入验证码"
+                value={captcha}
+                onChange={(e) => setCaptcha(e.target.value)}
+                required
+                className="h-11 flex-1 border-white/10 bg-white/[0.06] text-white placeholder:text-white/30 focus-visible:border-[#D4A843]/50 focus-visible:ring-[#D4A843]/30"
+                maxLength={6}
+              />
+              <button
+                type="button"
+                onClick={fetchCaptcha}
+                className="relative flex h-11 w-28 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-white/10 bg-white/[0.06] transition-all hover:bg-white/[0.12]"
+                disabled={captchaLoading}
+              >
+                {captchaLoading ? (
+                  <RefreshCw className="h-4 w-4 animate-spin text-white/50" />
+                ) : captchaImage ? (
+                  <img
+                    src={`data:image/jpeg;base64,${captchaImage}`}
+                    alt="验证码"
+                    className="h-full w-full object-contain"
+                  />
+                ) : (
+                  <span className="text-xs text-white/40">点击获取</span>
+                )}
+              </button>
+            </div>
+            <p className="text-[11px] text-white/30">看不清？点击验证码图片刷新</p>
+          </div>
+
           {error && (
             <div className="rounded-lg bg-red-500/10 px-3 py-2 text-sm text-red-300 ring-1 ring-red-500/20">
               {error}
@@ -99,7 +166,7 @@ export default function LoginPage() {
           <Button
             type="submit"
             className="h-11 w-full bg-gradient-to-r from-[#C41230] to-[#E8173A] font-medium text-white shadow-lg shadow-[#C41230]/25 transition-all hover:shadow-xl hover:shadow-[#C41230]/30 hover:brightness-110 disabled:opacity-50"
-            disabled={loading}
+            disabled={loading || !captchaImage}
           >
             {loading ? (
               <>
