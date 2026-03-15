@@ -8,41 +8,48 @@ import {
   MessageSquare,
   CalendarDays,
   UtensilsCrossed,
-  Settings,
+  User,
 } from "lucide-react";
 
 const mobileItems = [
-  { href: "/", label: "Home", icon: LayoutDashboard },
-  { href: "/chat", label: "Chat", icon: MessageSquare },
-  { href: "/academic/schedule", label: "Schedule", icon: CalendarDays },
-  { href: "/food/canteen", label: "Food", icon: UtensilsCrossed },
-  { href: "/settings", label: "Settings", icon: Settings },
+  { href: "/", label: "首页", icon: LayoutDashboard },
+  { href: "/chat", label: "AI问答", icon: MessageSquare },
+  { href: "/academic/schedule", label: "课表", icon: CalendarDays },
+  { href: "/food/canteen", label: "食堂", icon: UtensilsCrossed },
+  { href: "/settings", label: "我的", icon: User },
 ];
 
 export function MobileNav() {
   const pathname = usePathname();
 
   return (
-    <nav className="fixed bottom-0 left-0 right-0 z-50 flex border-t bg-white dark:bg-gray-950 md:hidden">
-      {mobileItems.map((item) => {
-        const Icon = item.icon;
-        const isActive = pathname === item.href;
-        return (
-          <Link
-            key={item.href}
-            href={item.href}
-            className={cn(
-              "flex flex-1 flex-col items-center gap-1 py-2 text-xs",
-              isActive
-                ? "text-gray-900 dark:text-gray-50"
-                : "text-gray-400 dark:text-gray-500"
-            )}
-          >
-            <Icon className="h-5 w-5" />
-            {item.label}
-          </Link>
-        );
-      })}
+    <nav className="fixed bottom-0 left-0 right-0 z-50 border-t border-border/50 bg-white/90 backdrop-blur-lg dark:bg-gray-950/90 md:hidden">
+      <div className="mx-auto flex max-w-md">
+        {mobileItems.map((item) => {
+          const Icon = item.icon;
+          const isActive = pathname === item.href;
+          return (
+            <Link
+              key={item.href}
+              href={item.href}
+              className={cn(
+                "flex flex-1 flex-col items-center gap-0.5 py-2 text-[10px] font-medium transition-colors",
+                isActive
+                  ? "text-[#C41230]"
+                  : "text-muted-foreground"
+              )}
+            >
+              <div className={cn(
+                "flex h-7 w-7 items-center justify-center rounded-lg transition-all",
+                isActive && "bg-[#C41230]/10"
+              )}>
+                <Icon className={cn("h-[18px] w-[18px]", isActive && "text-[#C41230]")} />
+              </div>
+              {item.label}
+            </Link>
+          );
+        })}
+      </div>
     </nav>
   );
 }
