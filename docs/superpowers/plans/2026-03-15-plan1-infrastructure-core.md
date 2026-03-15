@@ -1,27 +1,27 @@
-# Plan 1: Infrastructure + Core Skeleton Implementation Plan
+# Plan 1: 基础设施 + 核心骨架实施计划
 
-> **For agentic workers:** REQUIRED: Use superpowers:subagent-driven-development (if subagents available) or superpowers:executing-plans to implement this plan. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **致 Agent 工作者:** 必须: 使用 superpowers:subagent-driven-development（如果有子代理可用）或 superpowers:executing-plans 来实施本计划。步骤使用复选框（`- [ ]`）语法进行跟踪。
 
-**Goal:** Build the project foundation — monorepo scaffolding, Docker environment, CI/CD pipeline, authentication system, and the main application shell with navigation.
+**目标:** 构建项目基础 — 单体仓库脚手架、Docker 环境、CI/CD 流水线、认证系统，以及带导航的主应用外壳。
 
-**Architecture:** Next.js 14 frontend communicates with a FastAPI gateway backend. All business services run as modules within the gateway process. PostgreSQL for persistence, Redis for caching. Docker Compose orchestrates all services locally.
+**架构:** Next.js 14 前端与 FastAPI 网关后端通信。所有业务服务作为网关进程中的模块运行。PostgreSQL 用于持久化，Redis 用于缓存。Docker Compose 在本地编排所有服务。
 
-**Tech Stack:** Next.js 14 (App Router), TailwindCSS 4, shadcn/ui, Python 3.12, FastAPI, SQLAlchemy 2.0, Alembic, PostgreSQL 16, Redis 7, Docker Compose, GitHub Actions, JWT authentication.
+**技术栈:** Next.js 14 (App Router), TailwindCSS 4, shadcn/ui, Python 3.12, FastAPI, SQLAlchemy 2.0, Alembic, PostgreSQL 16, Redis 7, Docker Compose, GitHub Actions, JWT 认证。
 
-**Spec:** `docs/superpowers/specs/2026-03-15-scu-assistant-design.md`
+**规范:** `docs/superpowers/specs/2026-03-15-scu-assistant-design.md`
 
 ---
 
-## File Structure
+## 文件结构
 
 ```
 SCU_Assistant/
 ├── .github/
 │   └── workflows/
-│       ├── ci-frontend.yml        # Frontend lint + test + build
-│       └── ci-backend.yml         # Backend lint + test
+│       ├── ci-frontend.yml        # 前端代码检查 + 测试 + 构建
+│       └── ci-backend.yml         # 后端代码检查 + 测试
 ├── .gitignore
-├── docker-compose.yml             # All services orchestration
+├── docker-compose.yml             # 所有服务编排
 ├── frontend/
 │   ├── Dockerfile
 │   ├── package.json
@@ -31,27 +31,27 @@ SCU_Assistant/
 │   ├── .env.example
 │   ├── src/
 │   │   ├── app/
-│   │   │   ├── layout.tsx                 # Root layout (providers, fonts)
+│   │   │   ├── layout.tsx                 # 根布局（providers、字体）
 │   │   │   ├── (auth)/
-│   │   │   │   ├── layout.tsx             # Auth layout (centered card)
-│   │   │   │   └── login/page.tsx         # Login page
+│   │   │   │   ├── layout.tsx             # 认证布局（居中卡片）
+│   │   │   │   └── login/page.tsx         # 登录页面
 │   │   │   └── (main)/
-│   │   │       ├── layout.tsx             # Main layout (sidebar + topbar)
-│   │   │       └── page.tsx               # Dashboard placeholder
+│   │   │       ├── layout.tsx             # 主布局（侧边栏 + 顶栏）
+│   │   │       └── page.tsx               # 仪表盘占位符
 │   │   ├── components/
-│   │   │   ├── ui/                        # shadcn/ui components (auto-generated)
+│   │   │   ├── ui/                        # shadcn/ui 组件（自动生成）
 │   │   │   └── layout/
-│   │   │       ├── sidebar.tsx            # Sidebar navigation
-│   │   │       ├── topbar.tsx             # Top bar with search + user menu
-│   │   │       └── mobile-nav.tsx         # Mobile bottom tab bar
+│   │   │       ├── sidebar.tsx            # 侧边栏导航
+│   │   │       ├── topbar.tsx             # 顶栏（搜索 + 用户菜单）
+│   │   │       └── mobile-nav.tsx         # 移动端底部标签栏
 │   │   ├── lib/
-│   │   │   ├── api.ts                     # Axios instance with interceptors
-│   │   │   ├── auth.ts                    # Auth helpers (token management)
-│   │   │   └── utils.ts                   # shadcn/ui cn() utility
+│   │   │   ├── api.ts                     # Axios 实例（含拦截器）
+│   │   │   ├── auth.ts                    # 认证辅助函数（令牌管理）
+│   │   │   └── utils.ts                   # shadcn/ui cn() 工具函数
 │   │   ├── stores/
-│   │   │   └── auth-store.ts              # Zustand auth state
+│   │   │   └── auth-store.ts              # Zustand 认证状态
 │   │   └── types/
-│   │       └── api.ts                     # Shared API types
+│   │       └── api.ts                     # 共享 API 类型
 │   └── __tests__/
 │       ├── components/
 │       │   └── layout/
@@ -61,54 +61,54 @@ SCU_Assistant/
 │           └── auth.test.ts
 ├── backend/
 │   ├── Dockerfile
-│   ├── pyproject.toml                     # Python project config (uv/pip)
+│   ├── pyproject.toml                     # Python 项目配置 (uv/pip)
 │   ├── alembic.ini
 │   ├── alembic/
 │   │   ├── env.py
-│   │   └── versions/                      # Migration files
+│   │   └── versions/                      # 迁移文件
 │   ├── .env.example
 │   ├── gateway/
 │   │   ├── __init__.py
-│   │   ├── main.py                        # FastAPI app factory
+│   │   ├── main.py                        # FastAPI 应用工厂
 │   │   ├── auth/
 │   │   │   ├── __init__.py
-│   │   │   ├── router.py                  # /api/auth/* endpoints
-│   │   │   ├── service.py                 # Auth business logic
-│   │   │   ├── dependencies.py            # get_current_user dependency
-│   │   │   └── schemas.py                 # Login request/response models
+│   │   │   ├── router.py                  # /api/auth/* 端点
+│   │   │   ├── service.py                 # 认证业务逻辑
+│   │   │   ├── dependencies.py            # get_current_user 依赖
+│   │   │   └── schemas.py                 # 登录请求/响应模型
 │   │   └── middleware/
 │   │       ├── __init__.py
-│   │       ├── cors.py                    # CORS config
-│   │       └── rate_limit.py              # Redis sliding window rate limiter
+│   │       ├── cors.py                    # CORS 配置
+│   │       └── rate_limit.py              # Redis 滑动窗口限流器
 │   ├── shared/
 │   │   ├── __init__.py
-│   │   ├── database.py                    # SQLAlchemy engine + session
-│   │   ├── models.py                      # SQLAlchemy ORM models (users table)
-│   │   ├── config.py                      # Pydantic Settings
-│   │   ├── cache.py                       # Redis client wrapper
-│   │   └── exceptions.py                  # Custom exceptions + error handler
+│   │   ├── database.py                    # SQLAlchemy 引擎 + 会话
+│   │   ├── models.py                      # SQLAlchemy ORM 模型（users 表）
+│   │   ├── config.py                      # Pydantic Settings 配置
+│   │   ├── cache.py                       # Redis 客户端封装
+│   │   └── exceptions.py                  # 自定义异常 + 错误处理器
 │   └── tests/
-│       ├── conftest.py                    # Fixtures (test client, test DB)
-│       ├── test_auth_router.py            # Auth endpoint tests
-│       ├── test_auth_service.py           # Auth service unit tests
-│       └── test_rate_limit.py             # Rate limiter tests
+│       ├── conftest.py                    # 测试夹具（测试客户端、测试数据库）
+│       ├── test_auth_router.py            # 认证端点测试
+│       ├── test_auth_service.py           # 认证服务单元测试
+│       └── test_rate_limit.py             # 限流器测试
 └── docs/
     └── guides/
-        └── dev-setup.md                   # Development environment setup guide
+        └── dev-setup.md                   # 开发环境搭建指南
 ```
 
 ---
 
-## Chunk 1: Project Scaffolding & Docker Environment
+## Chunk 1: 项目脚手架与 Docker 环境
 
-### Task 1: Initialize Monorepo & Git
+### Task 1: 初始化单体仓库与 Git
 
-**Files:**
-- Create: `.gitignore`
-- Create: `frontend/package.json` (placeholder)
-- Create: `backend/pyproject.toml` (placeholder)
+**文件:**
+- 创建: `.gitignore`
+- 创建: `frontend/package.json`（占位符）
+- 创建: `backend/pyproject.toml`（占位符）
 
-- [ ] **Step 1: Create .gitignore**
+- [ ] **步骤 1: 创建 .gitignore**
 
 ```gitignore
 # Dependencies
@@ -145,7 +145,7 @@ Thumbs.db
 .superpowers/
 ```
 
-- [ ] **Step 2: Commit initial gitignore**
+- [ ] **步骤 2: 提交初始 gitignore**
 
 ```bash
 git add .gitignore
@@ -154,17 +154,17 @@ git commit -m "chore: add .gitignore"
 
 ---
 
-### Task 2: Backend Project Setup
+### Task 2: 后端项目搭建
 
-**Files:**
-- Create: `backend/pyproject.toml`
-- Create: `backend/.env.example`
-- Create: `backend/gateway/__init__.py`
-- Create: `backend/gateway/main.py`
-- Create: `backend/shared/__init__.py`
-- Create: `backend/shared/config.py`
+**文件:**
+- 创建: `backend/pyproject.toml`
+- 创建: `backend/.env.example`
+- 创建: `backend/gateway/__init__.py`
+- 创建: `backend/gateway/main.py`
+- 创建: `backend/shared/__init__.py`
+- 创建: `backend/shared/config.py`
 
-- [ ] **Step 1: Create backend/pyproject.toml**
+- [ ] **步骤 1: 创建 backend/pyproject.toml**
 
 ```toml
 [project]
@@ -206,7 +206,7 @@ asyncio_mode = "auto"
 testpaths = ["tests"]
 ```
 
-- [ ] **Step 2: Create backend/.env.example**
+- [ ] **步骤 2: 创建 backend/.env.example**
 
 ```env
 # Database
@@ -229,7 +229,7 @@ RATE_LIMIT_PER_MINUTE=60
 CHAT_RATE_LIMIT_PER_MINUTE=20
 ```
 
-- [ ] **Step 3: Create backend/shared/config.py**
+- [ ] **步骤 3: 创建 backend/shared/config.py**
 
 ```python
 from pydantic_settings import BaseSettings
@@ -257,7 +257,7 @@ class Settings(BaseSettings):
 settings = Settings()
 ```
 
-- [ ] **Step 4: Create backend/gateway/main.py (minimal FastAPI app)**
+- [ ] **步骤 4: 创建 backend/gateway/main.py（最小 FastAPI 应用）**
 
 ```python
 from fastapi import FastAPI
@@ -281,21 +281,21 @@ def create_app() -> FastAPI:
 app = create_app()
 ```
 
-- [ ] **Step 5: Create empty __init__.py files**
+- [ ] **步骤 5: 创建空的 __init__.py 文件**
 
-Create empty `backend/gateway/__init__.py` and `backend/shared/__init__.py`.
+创建空的 `backend/gateway/__init__.py` 和 `backend/shared/__init__.py`。
 
-- [ ] **Step 6: Verify backend starts locally**
+- [ ] **步骤 6: 验证后端在本地启动**
 
 ```bash
 cd backend
 pip install -e ".[dev]"
 uvicorn gateway.main:app --reload --port 8000
-# Visit http://localhost:8000/health → {"status": "ok"}
-# Visit http://localhost:8000/docs → Swagger UI
+# 访问 http://localhost:8000/health → {"status": "ok"}
+# 访问 http://localhost:8000/docs → Swagger UI
 ```
 
-- [ ] **Step 7: Commit**
+- [ ] **步骤 7: 提交**
 
 ```bash
 git add backend/
@@ -304,26 +304,26 @@ git commit -m "feat: initialize backend project with FastAPI"
 
 ---
 
-### Task 3: Frontend Project Setup
+### Task 3: 前端项目搭建
 
-**Files:**
-- Create: `frontend/package.json`
-- Create: `frontend/tsconfig.json`
-- Create: `frontend/next.config.ts`
-- Create: `frontend/tailwind.config.ts`
-- Create: `frontend/.env.example`
-- Create: `frontend/src/app/layout.tsx`
-- Create: `frontend/src/app/page.tsx`
-- Create: `frontend/src/lib/utils.ts`
+**文件:**
+- 创建: `frontend/package.json`
+- 创建: `frontend/tsconfig.json`
+- 创建: `frontend/next.config.ts`
+- 创建: `frontend/tailwind.config.ts`
+- 创建: `frontend/.env.example`
+- 创建: `frontend/src/app/layout.tsx`
+- 创建: `frontend/src/app/page.tsx`
+- 创建: `frontend/src/lib/utils.ts`
 
-- [ ] **Step 1: Initialize Next.js project**
+- [ ] **步骤 1: 初始化 Next.js 项目**
 
 ```bash
 cd frontend
 npx create-next-app@latest . --typescript --tailwind --eslint --app --src-dir --import-alias "@/*" --use-npm
 ```
 
-- [ ] **Step 2: Install additional dependencies**
+- [ ] **步骤 2: 安装额外依赖**
 
 ```bash
 cd frontend
@@ -331,30 +331,30 @@ npm install zustand @tanstack/react-query axios zod react-hook-form @hookform/re
 npm install -D vitest @testing-library/react @testing-library/jest-dom @vitejs/plugin-react jsdom
 ```
 
-- [ ] **Step 3: Create frontend/.env.example**
+- [ ] **步骤 3: 创建 frontend/.env.example**
 
 ```env
 NEXT_PUBLIC_API_URL=http://localhost:8000
 ```
 
-- [ ] **Step 4: Initialize shadcn/ui**
+- [ ] **步骤 4: 初始化 shadcn/ui**
 
 ```bash
 cd frontend
 npx shadcn@latest init
-# Select: New York style, Zinc color, CSS variables: yes
+# 选择: New York 样式, Zinc 颜色, CSS 变量: yes
 ```
 
-- [ ] **Step 5: Add core shadcn/ui components**
+- [ ] **步骤 5: 添加核心 shadcn/ui 组件**
 
 ```bash
 cd frontend
 npx shadcn@latest add button input card avatar dropdown-menu sheet separator toast
 ```
 
-- [ ] **Step 6: Create vitest config**
+- [ ] **步骤 6: 创建 vitest 配置**
 
-Create `frontend/vitest.config.ts`:
+创建 `frontend/vitest.config.ts`:
 
 ```typescript
 import { defineConfig } from "vitest/config";
@@ -376,13 +376,13 @@ export default defineConfig({
 });
 ```
 
-Create `frontend/vitest.setup.ts`:
+创建 `frontend/vitest.setup.ts`:
 
 ```typescript
 import "@testing-library/jest-dom/vitest";
 ```
 
-Add to `frontend/package.json` scripts:
+添加到 `frontend/package.json` scripts:
 
 ```json
 {
@@ -394,9 +394,9 @@ Add to `frontend/package.json` scripts:
 }
 ```
 
-- [ ] **Step 7: Replace default page with placeholder**
+- [ ] **步骤 7: 替换默认页面为占位符**
 
-Replace `frontend/src/app/page.tsx`:
+替换 `frontend/src/app/page.tsx`:
 
 ```tsx
 export default function Home() {
@@ -408,16 +408,16 @@ export default function Home() {
 }
 ```
 
-- [ ] **Step 8: Verify frontend builds and runs**
+- [ ] **步骤 8: 验证前端构建和运行**
 
 ```bash
 cd frontend
 npm run build
 npm run dev
-# Visit http://localhost:3000 → "SCU Assistant" heading
+# 访问 http://localhost:3000 → 显示 "SCU Assistant" 标题
 ```
 
-- [ ] **Step 9: Commit**
+- [ ] **步骤 9: 提交**
 
 ```bash
 git add frontend/
@@ -426,14 +426,14 @@ git commit -m "feat: initialize frontend with Next.js, TailwindCSS, shadcn/ui"
 
 ---
 
-### Task 4: Docker Compose Environment
+### Task 4: Docker Compose 环境
 
-**Files:**
-- Create: `docker-compose.yml`
-- Create: `backend/Dockerfile`
-- Create: `frontend/Dockerfile`
+**文件:**
+- 创建: `docker-compose.yml`
+- 创建: `backend/Dockerfile`
+- 创建: `frontend/Dockerfile`
 
-- [ ] **Step 1: Create backend/Dockerfile**
+- [ ] **步骤 1: 创建 backend/Dockerfile**
 
 ```dockerfile
 FROM python:3.12-slim
@@ -448,7 +448,7 @@ COPY . .
 CMD ["uvicorn", "gateway.main:app", "--host", "0.0.0.0", "--port", "8000"]
 ```
 
-- [ ] **Step 2: Create frontend/Dockerfile**
+- [ ] **步骤 2: 创建 frontend/Dockerfile**
 
 ```dockerfile
 FROM node:20-alpine
@@ -465,7 +465,7 @@ RUN npm run build
 CMD ["npm", "start"]
 ```
 
-- [ ] **Step 3: Create docker-compose.yml**
+- [ ] **步骤 3: 创建 docker-compose.yml**
 
 ```yaml
 services:
@@ -520,9 +520,9 @@ volumes:
   pgdata:
 ```
 
-- [ ] **Step 4: Create backend/.env for local Docker**
+- [ ] **步骤 4: 创建本地 Docker 用的 backend/.env**
 
-Copy `backend/.env.example` to `backend/.env` and update:
+将 `backend/.env.example` 复制为 `backend/.env` 并更新:
 
 ```env
 DATABASE_URL=postgresql+asyncpg://postgres:postgres@postgres:5432/scu_assistant
@@ -530,12 +530,12 @@ REDIS_URL=redis://redis:6379/0
 JWT_SECRET_KEY=dev-secret-change-in-production
 ```
 
-- [ ] **Step 5: Verify Docker Compose starts all services**
+- [ ] **步骤 5: 验证 Docker Compose 启动所有服务**
 
 ```bash
 docker compose up -d --build
 docker compose ps
-# All services should show "Up" / "healthy"
+# 所有服务应显示 "Up" / "healthy"
 curl http://localhost:8000/health
 # → {"status": "ok"}
 curl http://localhost:3000
@@ -543,7 +543,7 @@ curl http://localhost:3000
 docker compose down
 ```
 
-- [ ] **Step 6: Commit**
+- [ ] **步骤 6: 提交**
 
 ```bash
 git add docker-compose.yml backend/Dockerfile frontend/Dockerfile
@@ -552,15 +552,15 @@ git commit -m "feat: add Docker Compose with all services"
 
 ---
 
-### Task 5: CI/CD Pipeline (GitHub Actions)
+### Task 5: CI/CD 流水线 (GitHub Actions)
 
-**Files:**
-- Create: `.github/workflows/ci-backend.yml`
-- Create: `.github/workflows/ci-frontend.yml`
+**文件:**
+- 创建: `.github/workflows/ci-backend.yml`
+- 创建: `.github/workflows/ci-frontend.yml`
 
-- [ ] **Step 1: Create backend CI workflow**
+- [ ] **步骤 1: 创建后端 CI 工作流**
 
-Create `.github/workflows/ci-backend.yml`:
+创建 `.github/workflows/ci-backend.yml`:
 
 ```yaml
 name: Backend CI
@@ -621,9 +621,9 @@ jobs:
           JWT_SECRET_KEY: test-secret
 ```
 
-- [ ] **Step 2: Create frontend CI workflow**
+- [ ] **步骤 2: 创建前端 CI 工作流**
 
-Create `.github/workflows/ci-frontend.yml`:
+创建 `.github/workflows/ci-frontend.yml`:
 
 ```yaml
 name: Frontend CI
@@ -673,15 +673,15 @@ jobs:
       - run: cd frontend && npm run build
 ```
 
-- [ ] **Step 3: Verify workflow syntax (optional)**
+- [ ] **步骤 3: 验证工作流语法（可选）**
 
 ```bash
-# If actionlint is installed:
+# 如果已安装 actionlint:
 actionlint .github/workflows/ci-backend.yml .github/workflows/ci-frontend.yml
-# Otherwise, push to a branch and verify workflows trigger on GitHub
+# 否则，推送到分支并在 GitHub 上验证工作流是否触发
 ```
 
-- [ ] **Step 4: Commit**
+- [ ] **步骤 4: 提交**
 
 ```bash
 git add .github/
@@ -690,17 +690,17 @@ git commit -m "ci: add GitHub Actions workflows for frontend and backend"
 
 ---
 
-## Chunk 2: Database & Authentication Backend
+## Chunk 2: 数据库与认证后端
 
-### Task 6: Database Setup with SQLAlchemy + Alembic
+### Task 6: 使用 SQLAlchemy + Alembic 搭建数据库
 
-**Files:**
-- Create: `backend/shared/database.py`
-- Create: `backend/shared/models.py`
-- Create: `backend/alembic.ini`
-- Create: `backend/alembic/env.py`
+**文件:**
+- 创建: `backend/shared/database.py`
+- 创建: `backend/shared/models.py`
+- 创建: `backend/alembic.ini`
+- 创建: `backend/alembic/env.py`
 
-- [ ] **Step 1: Create backend/shared/database.py**
+- [ ] **步骤 1: 创建 backend/shared/database.py**
 
 ```python
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
@@ -719,7 +719,7 @@ async def get_db() -> AsyncSession:
             await session.close()
 ```
 
-- [ ] **Step 2: Create backend/shared/models.py (users table)**
+- [ ] **步骤 2: 创建 backend/shared/models.py（users 表）**
 
 ```python
 from datetime import datetime
@@ -751,16 +751,16 @@ class User(Base):
     )
 ```
 
-- [ ] **Step 3: Initialize Alembic**
+- [ ] **步骤 3: 初始化 Alembic**
 
 ```bash
 cd backend
 alembic init alembic
 ```
 
-- [ ] **Step 4: Configure alembic/env.py**
+- [ ] **步骤 4: 配置 alembic/env.py**
 
-Replace `backend/alembic/env.py`:
+替换 `backend/alembic/env.py`:
 
 ```python
 import asyncio
@@ -809,30 +809,30 @@ else:
     asyncio.run(run_migrations_online())
 ```
 
-- [ ] **Step 5: Update alembic.ini**
+- [ ] **步骤 5: 更新 alembic.ini**
 
-In `backend/alembic.ini`, set `sqlalchemy.url` to empty (we use settings instead):
+在 `backend/alembic.ini` 中，将 `sqlalchemy.url` 设为空（我们使用 settings 代替）:
 
 ```ini
 sqlalchemy.url =
 ```
 
-- [ ] **Step 6: Generate initial migration**
+- [ ] **步骤 6: 生成初始迁移**
 
 ```bash
 cd backend
 alembic revision --autogenerate -m "create users table"
 ```
 
-- [ ] **Step 7: Run migration and verify**
+- [ ] **步骤 7: 运行迁移并验证**
 
 ```bash
 cd backend
 alembic upgrade head
-# Verify: connect to PostgreSQL and check that users table exists
+# 验证：连接到 PostgreSQL 并检查 users 表是否存在
 ```
 
-- [ ] **Step 8: Commit**
+- [ ] **步骤 8: 提交**
 
 ```bash
 git add backend/shared/database.py backend/shared/models.py backend/alembic.ini backend/alembic/
@@ -841,12 +841,12 @@ git commit -m "feat: add SQLAlchemy models and Alembic migrations for users tabl
 
 ---
 
-### Task 7: Redis Cache Setup
+### Task 7: Redis 缓存搭建
 
-**Files:**
-- Create: `backend/shared/cache.py`
+**文件:**
+- 创建: `backend/shared/cache.py`
 
-- [ ] **Step 1: Create backend/shared/cache.py**
+- [ ] **步骤 1: 创建 backend/shared/cache.py**
 
 ```python
 import redis.asyncio as redis
@@ -860,9 +860,9 @@ async def get_redis() -> redis.Redis:
     return redis_client
 ```
 
-- [ ] **Step 2: Add health check for Redis in gateway/main.py**
+- [ ] **步骤 2: 在 gateway/main.py 中添加 Redis 健康检查**
 
-Update `backend/gateway/main.py`:
+更新 `backend/gateway/main.py`:
 
 ```python
 from fastapi import FastAPI
@@ -907,7 +907,7 @@ def create_app() -> FastAPI:
 app = create_app()
 ```
 
-- [ ] **Step 3: Commit**
+- [ ] **步骤 3: 提交**
 
 ```bash
 git add backend/shared/cache.py backend/gateway/main.py
@@ -916,15 +916,15 @@ git commit -m "feat: add Redis cache setup and enhanced health check"
 
 ---
 
-### Task 8: Error Handling & Middleware
+### Task 8: 错误处理与中间件
 
-**Files:**
-- Create: `backend/shared/exceptions.py`
-- Create: `backend/gateway/middleware/cors.py`
-- Create: `backend/gateway/middleware/rate_limit.py`
-- Create: `backend/gateway/middleware/__init__.py`
+**文件:**
+- 创建: `backend/shared/exceptions.py`
+- 创建: `backend/gateway/middleware/cors.py`
+- 创建: `backend/gateway/middleware/rate_limit.py`
+- 创建: `backend/gateway/middleware/__init__.py`
 
-- [ ] **Step 1: Create backend/shared/exceptions.py**
+- [ ] **步骤 1: 创建 backend/shared/exceptions.py**
 
 ```python
 from fastapi import FastAPI, Request
@@ -969,7 +969,7 @@ def register_error_handlers(app: FastAPI) -> None:
         )
 ```
 
-- [ ] **Step 2: Create backend/gateway/middleware/cors.py**
+- [ ] **步骤 2: 创建 backend/gateway/middleware/cors.py**
 
 ```python
 from fastapi import FastAPI
@@ -986,9 +986,9 @@ def setup_cors(app: FastAPI) -> None:
     )
 ```
 
-- [ ] **Step 3: Write the failing test for rate limiter**
+- [ ] **步骤 3: 编写限流器的失败测试**
 
-Create `backend/tests/test_rate_limit.py`:
+创建 `backend/tests/test_rate_limit.py`:
 
 ```python
 import pytest
@@ -1027,16 +1027,16 @@ async def test_rate_limit_creates_key_if_not_exists():
     mock_redis.set.assert_called_once()
 ```
 
-- [ ] **Step 4: Run test to verify it fails**
+- [ ] **步骤 4: 运行测试验证其失败**
 
 ```bash
 cd backend
 pytest tests/test_rate_limit.py -v
 ```
 
-Expected: FAIL — `ModuleNotFoundError: No module named 'gateway.middleware.rate_limit'`
+**预期:** 失败 — `ModuleNotFoundError: No module named 'gateway.middleware.rate_limit'`
 
-- [ ] **Step 5: Create backend/gateway/middleware/rate_limit.py**
+- [ ] **步骤 5: 创建 backend/gateway/middleware/rate_limit.py**
 
 ```python
 import redis.asyncio as redis
@@ -1062,22 +1062,22 @@ async def check_rate_limit(
     return True
 ```
 
-- [ ] **Step 6: Create backend/gateway/middleware/__init__.py**
+- [ ] **步骤 6: 创建 backend/gateway/middleware/__init__.py**
 
-Empty file.
+空文件。
 
-- [ ] **Step 7: Run tests to verify they pass**
+- [ ] **步骤 7: 运行测试验证其通过**
 
 ```bash
 cd backend
 pytest tests/test_rate_limit.py -v
 ```
 
-Expected: 3 tests PASS
+**预期:** 3 个测试通过
 
-- [ ] **Step 8: Wire middleware into main.py**
+- [ ] **步骤 8: 将中间件接入 main.py**
 
-Update `backend/gateway/main.py`:
+更新 `backend/gateway/main.py`:
 
 ```python
 from fastapi import FastAPI
@@ -1127,7 +1127,7 @@ def create_app() -> FastAPI:
 app = create_app()
 ```
 
-- [ ] **Step 9: Commit**
+- [ ] **步骤 9: 提交**
 
 ```bash
 git add backend/shared/exceptions.py backend/gateway/middleware/ backend/tests/test_rate_limit.py backend/gateway/main.py
@@ -1136,16 +1136,16 @@ git commit -m "feat: add error handling, CORS, and rate limiting middleware"
 
 ---
 
-### Task 9: JWT Authentication Service
+### Task 9: JWT 认证服务
 
-**Files:**
-- Create: `backend/gateway/auth/__init__.py`
-- Create: `backend/gateway/auth/schemas.py`
-- Create: `backend/gateway/auth/service.py`
-- Create: `backend/gateway/auth/dependencies.py`
-- Create: `backend/tests/test_auth_service.py`
+**文件:**
+- 创建: `backend/gateway/auth/__init__.py`
+- 创建: `backend/gateway/auth/schemas.py`
+- 创建: `backend/gateway/auth/service.py`
+- 创建: `backend/gateway/auth/dependencies.py`
+- 创建: `backend/tests/test_auth_service.py`
 
-- [ ] **Step 1: Create backend/gateway/auth/schemas.py**
+- [ ] **步骤 1: 创建 backend/gateway/auth/schemas.py**
 
 ```python
 from pydantic import BaseModel
@@ -1173,9 +1173,9 @@ class UserResponse(BaseModel):
     model_config = {"from_attributes": True}
 ```
 
-- [ ] **Step 2: Write failing tests for auth service**
+- [ ] **步骤 2: 编写认证服务的失败测试**
 
-Create `backend/tests/test_auth_service.py`:
+创建 `backend/tests/test_auth_service.py`:
 
 ```python
 import pytest
@@ -1220,16 +1220,16 @@ async def test_verify_invalid_token(auth_service):
     assert payload is None
 ```
 
-- [ ] **Step 3: Run tests to verify they fail**
+- [ ] **步骤 3: 运行测试验证其失败**
 
 ```bash
 cd backend
 pytest tests/test_auth_service.py -v
 ```
 
-Expected: FAIL — `ModuleNotFoundError: No module named 'gateway.auth.service'`
+**预期:** 失败 — `ModuleNotFoundError: No module named 'gateway.auth.service'`
 
-- [ ] **Step 4: Create backend/gateway/auth/service.py**
+- [ ] **步骤 4: 创建 backend/gateway/auth/service.py**
 
 ```python
 import uuid
@@ -1312,20 +1312,20 @@ class AuthService:
         return user
 ```
 
-- [ ] **Step 5: Create backend/gateway/auth/__init__.py**
+- [ ] **步骤 5: 创建 backend/gateway/auth/__init__.py**
 
-Empty file.
+空文件。
 
-- [ ] **Step 6: Run tests to verify they pass**
+- [ ] **步骤 6: 运行测试验证其通过**
 
 ```bash
 cd backend
 pytest tests/test_auth_service.py -v
 ```
 
-Expected: 4 tests PASS
+**预期:** 4 个测试通过
 
-- [ ] **Step 7: Commit**
+- [ ] **步骤 7: 提交**
 
 ```bash
 git add backend/gateway/auth/ backend/tests/test_auth_service.py
@@ -1334,15 +1334,15 @@ git commit -m "feat: add JWT auth service with token creation and verification"
 
 ---
 
-### Task 10: Auth API Endpoints
+### Task 10: 认证 API 端点
 
-**Files:**
-- Create: `backend/gateway/auth/router.py`
-- Create: `backend/gateway/auth/dependencies.py`
-- Create: `backend/tests/test_auth_router.py`
-- Modify: `backend/gateway/main.py`
+**文件:**
+- 创建: `backend/gateway/auth/router.py`
+- 创建: `backend/gateway/auth/dependencies.py`
+- 创建: `backend/tests/test_auth_router.py`
+- 修改: `backend/gateway/main.py`
 
-- [ ] **Step 1: Create backend/gateway/auth/dependencies.py**
+- [ ] **步骤 1: 创建 backend/gateway/auth/dependencies.py**
 
 ```python
 from fastapi import Depends, Request
@@ -1374,9 +1374,9 @@ async def get_current_user(request: Request, auth_service: AuthService = Depends
     return user
 ```
 
-- [ ] **Step 2: Add `get_user_by_id` method to AuthService**
+- [ ] **步骤 2: 向 AuthService 添加 `get_user_by_id` 方法**
 
-Add this method to `backend/gateway/auth/service.py`:
+将此方法添加到 `backend/gateway/auth/service.py`:
 
 ```python
     async def get_user_by_id(self, user_id: int) -> User | None:
@@ -1384,7 +1384,7 @@ Add this method to `backend/gateway/auth/service.py`:
         return result.scalar_one_or_none()
 ```
 
-- [ ] **Step 3: Create backend/gateway/auth/router.py**
+- [ ] **步骤 3: 创建 backend/gateway/auth/router.py**
 
 ```python
 from fastapi import APIRouter, Depends, Request, Response
@@ -1489,18 +1489,18 @@ async def get_me(user=Depends(get_current_user)):
     return UserResponse.model_validate(user)
 ```
 
-- [ ] **Step 4: Register auth router in main.py**
+- [ ] **步骤 4: 在 main.py 中注册认证路由**
 
-Update `backend/gateway/main.py`, add after `register_error_handlers(app)`:
+更新 `backend/gateway/main.py`，在 `register_error_handlers(app)` 之后添加:
 
 ```python
 from gateway.auth.router import router as auth_router
 app.include_router(auth_router)
 ```
 
-- [ ] **Step 5: Write integration test for auth endpoints**
+- [ ] **步骤 5: 编写认证端点的集成测试**
 
-Create `backend/tests/test_auth_router.py`:
+创建 `backend/tests/test_auth_router.py`:
 
 ```python
 import pytest
@@ -1542,16 +1542,16 @@ async def test_get_me_without_token(client):
     assert response.status_code == 401
 ```
 
-- [ ] **Step 6: Run tests**
+- [ ] **步骤 6: 运行测试**
 
 ```bash
 cd backend
 pytest tests/test_auth_router.py -v
 ```
 
-Expected: 3 tests PASS
+**预期:** 3 个测试通过
 
-- [ ] **Step 7: Commit**
+- [ ] **步骤 7: 提交**
 
 ```bash
 git add backend/gateway/auth/ backend/gateway/main.py backend/tests/test_auth_router.py
@@ -1560,18 +1560,18 @@ git commit -m "feat: add auth API endpoints (login, refresh, logout, me)"
 
 ---
 
-## Chunk 3: Frontend Auth & Main Layout
+## Chunk 3: 前端认证与主布局
 
-### Task 11: Frontend Auth — API Client & Auth Store
+### Task 11: 前端认证 — API 客户端与认证状态管理
 
-**Files:**
-- Create: `frontend/src/lib/api.ts`
-- Create: `frontend/src/lib/auth.ts`
-- Create: `frontend/src/stores/auth-store.ts`
-- Create: `frontend/src/types/api.ts`
-- Create: `frontend/__tests__/lib/auth.test.ts`
+**文件:**
+- 创建: `frontend/src/lib/api.ts`
+- 创建: `frontend/src/lib/auth.ts`
+- 创建: `frontend/src/stores/auth-store.ts`
+- 创建: `frontend/src/types/api.ts`
+- 创建: `frontend/__tests__/lib/auth.test.ts`
 
-- [ ] **Step 1: Create frontend/src/types/api.ts**
+- [ ] **步骤 1: 创建 frontend/src/types/api.ts**
 
 ```typescript
 export interface User {
@@ -1603,7 +1603,7 @@ export interface ApiError {
 }
 ```
 
-- [ ] **Step 2: Create frontend/src/lib/api.ts**
+- [ ] **步骤 2: 创建 frontend/src/lib/api.ts**
 
 ```typescript
 import axios from "axios";
@@ -1656,7 +1656,7 @@ api.interceptors.response.use(
 );
 ```
 
-- [ ] **Step 3: Create frontend/src/stores/auth-store.ts**
+- [ ] **步骤 3: 创建 frontend/src/stores/auth-store.ts**
 
 ```typescript
 import { create } from "zustand";
@@ -1687,7 +1687,7 @@ export const useAuthStore = create<AuthState>((set) => ({
 }));
 ```
 
-- [ ] **Step 4: Create frontend/src/lib/auth.ts**
+- [ ] **步骤 4: 创建 frontend/src/lib/auth.ts**
 
 ```typescript
 import { api } from "./api";
@@ -1708,9 +1708,9 @@ export async function getMe(): Promise<User> {
 }
 ```
 
-- [ ] **Step 5: Write test for auth helpers**
+- [ ] **步骤 5: 编写认证辅助函数的测试**
 
-Create `frontend/__tests__/lib/auth.test.ts`:
+创建 `frontend/__tests__/lib/auth.test.ts`:
 
 ```typescript
 import { describe, it, expect, vi, beforeEach } from "vitest";
@@ -1761,16 +1761,16 @@ describe("AuthStore", () => {
 });
 ```
 
-- [ ] **Step 6: Run tests**
+- [ ] **步骤 6: 运行测试**
 
 ```bash
 cd frontend
 npm test -- __tests__/lib/auth.test.ts
 ```
 
-Expected: 2 tests PASS
+**预期:** 2 个测试通过
 
-- [ ] **Step 7: Commit**
+- [ ] **步骤 7: 提交**
 
 ```bash
 git add frontend/src/lib/ frontend/src/stores/ frontend/src/types/ frontend/__tests__/
@@ -1779,13 +1779,13 @@ git commit -m "feat: add frontend API client, auth store, and auth helpers"
 
 ---
 
-### Task 12: Login Page
+### Task 12: 登录页面
 
-**Files:**
-- Create: `frontend/src/app/(auth)/layout.tsx`
-- Create: `frontend/src/app/(auth)/login/page.tsx`
+**文件:**
+- 创建: `frontend/src/app/(auth)/layout.tsx`
+- 创建: `frontend/src/app/(auth)/login/page.tsx`
 
-- [ ] **Step 1: Create frontend/src/app/(auth)/layout.tsx**
+- [ ] **步骤 1: 创建 frontend/src/app/(auth)/layout.tsx**
 
 ```tsx
 export default function AuthLayout({ children }: { children: React.ReactNode }) {
@@ -1797,7 +1797,7 @@ export default function AuthLayout({ children }: { children: React.ReactNode }) 
 }
 ```
 
-- [ ] **Step 2: Create frontend/src/app/(auth)/login/page.tsx**
+- [ ] **步骤 2: 创建 frontend/src/app/(auth)/login/page.tsx**
 
 ```tsx
 "use client";
@@ -1878,15 +1878,15 @@ export default function LoginPage() {
 }
 ```
 
-- [ ] **Step 3: Verify login page renders**
+- [ ] **步骤 3: 验证登录页面渲染**
 
 ```bash
 cd frontend
 npm run dev
-# Visit http://localhost:3000/login → login card with form
+# 访问 http://localhost:3000/login → 显示带表单的登录卡片
 ```
 
-- [ ] **Step 4: Commit**
+- [ ] **步骤 4: 提交**
 
 ```bash
 git add frontend/src/app/\(auth\)/
@@ -1895,16 +1895,16 @@ git commit -m "feat: add login page with auth form"
 
 ---
 
-### Task 13: Main Layout — Sidebar + Topbar
+### Task 13: 主布局 — 侧边栏 + 顶栏
 
-**Files:**
-- Create: `frontend/src/app/(main)/layout.tsx`
-- Update: `frontend/src/app/(main)/page.tsx`
-- Create: `frontend/src/components/layout/sidebar.tsx`
-- Create: `frontend/src/components/layout/topbar.tsx`
-- Create: `frontend/src/components/layout/mobile-nav.tsx`
+**文件:**
+- 创建: `frontend/src/app/(main)/layout.tsx`
+- 修改: `frontend/src/app/(main)/page.tsx`
+- 创建: `frontend/src/components/layout/sidebar.tsx`
+- 创建: `frontend/src/components/layout/topbar.tsx`
+- 创建: `frontend/src/components/layout/mobile-nav.tsx`
 
-- [ ] **Step 1: Create frontend/src/components/layout/sidebar.tsx**
+- [ ] **步骤 1: 创建 frontend/src/components/layout/sidebar.tsx**
 
 ```tsx
 "use client";
@@ -1966,7 +1966,7 @@ export function Sidebar() {
 }
 ```
 
-- [ ] **Step 2: Create frontend/src/components/layout/topbar.tsx**
+- [ ] **步骤 2: 创建 frontend/src/components/layout/topbar.tsx**
 
 ```tsx
 "use client";
@@ -2037,7 +2037,7 @@ export function Topbar() {
 }
 ```
 
-- [ ] **Step 3: Create frontend/src/components/layout/mobile-nav.tsx**
+- [ ] **步骤 3: 创建 frontend/src/components/layout/mobile-nav.tsx**
 
 ```tsx
 "use client";
@@ -2090,7 +2090,7 @@ export function MobileNav() {
 }
 ```
 
-- [ ] **Step 4: Create frontend/src/app/(main)/layout.tsx**
+- [ ] **步骤 4: 创建 frontend/src/app/(main)/layout.tsx**
 
 ```tsx
 import { Sidebar } from "@/components/layout/sidebar";
@@ -2111,7 +2111,7 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
 }
 ```
 
-- [ ] **Step 5: Update frontend/src/app/(main)/page.tsx**
+- [ ] **步骤 5: 更新 frontend/src/app/(main)/page.tsx**
 
 ```tsx
 export default function DashboardPage() {
@@ -2140,24 +2140,24 @@ export default function DashboardPage() {
 }
 ```
 
-- [ ] **Step 6: Install lucide-react icons**
+- [ ] **步骤 6: 安装 lucide-react 图标库**
 
 ```bash
 cd frontend
 npm install lucide-react
 ```
 
-- [ ] **Step 7: Verify main layout renders**
+- [ ] **步骤 7: 验证主布局渲染**
 
 ```bash
 cd frontend
 npm run dev
-# Visit http://localhost:3000 → sidebar + topbar + dashboard placeholder
-# Resize browser to mobile width → bottom tab bar appears, sidebar hides
-# Note: sidebar links like /academic/schedule will 404 — pages are created in Plans 2-4
+# 访问 http://localhost:3000 → 侧边栏 + 顶栏 + 仪表盘占位符
+# 将浏览器调整为移动端宽度 → 底部标签栏出现，侧边栏隐藏
+# 注意：侧边栏链接如 /academic/schedule 会 404 — 页面将在 Plan 2-4 中创建
 ```
 
-- [ ] **Step 8: Commit**
+- [ ] **步骤 8: 提交**
 
 ```bash
 git add frontend/src/app/\(main\)/ frontend/src/components/layout/
@@ -2166,12 +2166,12 @@ git commit -m "feat: add main layout with sidebar, topbar, and mobile navigation
 
 ---
 
-### Task 14: Dev Setup Documentation
+### Task 14: 开发环境搭建文档
 
-**Files:**
-- Create: `docs/guides/dev-setup.md`
+**文件:**
+- 创建: `docs/guides/dev-setup.md`
 
-- [ ] **Step 1: Create docs/guides/dev-setup.md**
+- [ ] **步骤 1: 创建 docs/guides/dev-setup.md**
 
 ```markdown
 # Development Environment Setup
@@ -2257,7 +2257,7 @@ cd frontend
 npm run lint
 ```
 
-- [ ] **Step 2: Commit**
+- [ ] **步骤 2: 提交**
 
 ```bash
 git add docs/guides/dev-setup.md
@@ -2266,53 +2266,53 @@ git commit -m "docs: add development environment setup guide"
 
 ---
 
-### Task 15: Final Verification
+### Task 15: 最终验证
 
-- [ ] **Step 1: Run full Docker Compose and verify end-to-end**
+- [ ] **步骤 1: 运行完整 Docker Compose 并进行端到端验证**
 
 ```bash
 docker compose up -d --build
-# Wait for services to be healthy
+# 等待服务健康就绪
 docker compose ps
 
-# Test backend health
+# 测试后端健康检查
 curl http://localhost:8000/health
-# Expected: {"status":"ok","services":{"database":"ok","redis":"ok"}}
+# 预期: {"status":"ok","services":{"database":"ok","redis":"ok"}}
 
-# Test frontend
+# 测试前端
 curl -s http://localhost:3000 | head -5
-# Expected: HTML output
+# 预期: HTML 输出
 
-# Test Swagger docs
+# 测试 Swagger 文档
 curl -s http://localhost:8000/docs | head -5
-# Expected: HTML (Swagger UI)
+# 预期: HTML (Swagger UI)
 ```
 
-- [ ] **Step 2: Run all backend tests**
+- [ ] **步骤 2: 运行所有后端测试**
 
 ```bash
 cd backend
 pytest -v
-# Expected: All tests PASS
+# 预期: 所有测试通过
 ```
 
-- [ ] **Step 3: Run all frontend tests**
+- [ ] **步骤 3: 运行所有前端测试**
 
 ```bash
 cd frontend
 npm test
-# Expected: All tests PASS
+# 预期: 所有测试通过
 ```
 
-- [ ] **Step 4: Verify build succeeds**
+- [ ] **步骤 4: 验证构建成功**
 
 ```bash
 cd frontend
 npm run build
-# Expected: Build completes without errors
+# 预期: 构建成功完成，无错误
 ```
 
-- [ ] **Step 5: Clean up**
+- [ ] **步骤 5: 清理**
 
 ```bash
 docker compose down
