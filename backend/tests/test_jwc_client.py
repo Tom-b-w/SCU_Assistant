@@ -49,3 +49,15 @@ async def test_get_scores(jwc_client):
     assert "course_name" in scores[0]
     assert "score" in scores[0]
     assert "credit" in scores[0]
+
+
+@pytest.mark.asyncio
+async def test_get_plan_completion(jwc_client):
+    data = await jwc_client.get_plan_completion("mock_session:xxx")
+    assert isinstance(data, dict)
+    assert "total_required_credits" in data
+    assert "earned_credits" in data
+    assert "categories" in data
+    assert len(data["categories"]) > 0
+    assert "name" in data["categories"][0]
+    assert "required_credits" in data["categories"][0]

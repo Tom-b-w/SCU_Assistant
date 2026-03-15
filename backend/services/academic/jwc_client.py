@@ -2,19 +2,41 @@
 四川大学教务系统 (zhjw.scu.edu.cn) 客户端
 
 登录流程:
-1. GET /login  → 获取 JSESSIONID cookie
+1. GET /login  → 获取 student.urpSoft.cn cookie + tokenValue 隐藏字段
 2. GET /img/captcha.jpg → 获取验证码图片
-3. POST /j_spring_security_check → 提交学号 + MD5密码 + 验证码
-4. 成功后 JSESSIONID 即为已认证 session，可用于后续请求
+3. POST /j_spring_security_check → 提交 j_username + j_password(MD5) + j_captcha + tokenValue
+4. 成功后 cookie 即为已认证 session，可用于后续请求
+
+数据接口:
+- 课表: /student/courseSelect/thisSemesterCurriculum/ajaxStudentSchedule/callback
+- 成绩: /student/integratedQuery/scoreQuery/allPassingScores/callback
+- 方案完成: /student/integratedQuery/planCompletion/index (HTML 解析)
 """
 
 import hashlib
+import json
+import logging
 import re
+import struct
 import uuid
+import zlib
 from abc import ABC, abstractmethod
-from datetime import time
 
 import httpx
+
+logger = logging.getLogger(__name__)
+
+# SCU 教务系统使用的 cookie 名称
+SESSION_COOKIE_NAME = "student.urpSoft.cn"
+
+
+def _get_field(item: dict, *keys, default=""):
+    """从 dict 中按多个可能的 key 依次尝试取值"""
+    for k in keys:
+        v = item.get(k)
+        if v is not None and v != "":
+            return v
+    return default
 
 
 class BaseJwcClient(ABC):
@@ -22,79 +44,86 @@ class BaseJwcClient(ABC):
 
     @abstractmethod
     async def start_session(self) -> tuple[str, bytes]:
-        """
-        创建新会话，获取验证码
-        返回: (session_key, captcha_image_bytes)
-        """
         ...
 
     @abstractmethod
     async def login(
         self, session_key: str, student_id: str, password: str, captcha: str
     ) -> dict | None:
-        """
-        验证登录
-        返回: 学生信息 dict，失败返回 None
-        """
         ...
 
     @abstractmethod
     async def get_schedule(self, session_key: str, semester: str) -> list[dict]:
-        """获取课表数据"""
         ...
 
     @abstractmethod
     async def get_scores(self, session_key: str) -> list[dict]:
-        """获取成绩数据"""
+        ...
+
+    @abstractmethod
+    async def get_plan_completion(self, session_key: str) -> dict:
         ...
 
 
 class RealJwcClient(BaseJwcClient):
     """真实教务系统客户端 — 对接 zhjw.scu.edu.cn"""
 
-    BASE_URL = "http://zhjw.scu.edu.cn"
-
-    def __init__(self, redis_client):
+    def __init__(self, redis_client, base_url: str = "http://zhjw.scu.edu.cn"):
         self.redis = redis_client
+        self.BASE_URL = base_url.rstrip("/")
 
     def _make_http_client(self) -> httpx.AsyncClient:
         return httpx.AsyncClient(
-            timeout=15.0,
+            timeout=20.0,
             follow_redirects=True,
             headers={
                 "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
                               "AppleWebKit/537.36 (KHTML, like Gecko) "
                               "Chrome/120.0.0.0 Safari/537.36",
-                "Referer": f"{self.BASE_URL}/login",
+                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,"
+                          "application/json,*/*;q=0.8",
+                "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
             },
         )
 
-    async def start_session(self) -> tuple[str, bytes]:
-        """访问登录页获取 JSESSIONID，再获取验证码图片"""
-        async with self._make_http_client() as client:
-            # 1. 访问登录页，获取 JSESSIONID
-            resp = await client.get(f"{self.BASE_URL}/login")
-            jsessionid = resp.cookies.get("JSESSIONID")
-            if not jsessionid:
-                # 从 Set-Cookie header 手动提取
-                for cookie in resp.cookies.jar:
-                    if cookie.name == "JSESSIONID":
-                        jsessionid = cookie.value
-                        break
+    def _session_cookies(self, session_value: str) -> dict:
+        """构造教务系统的 session cookie"""
+        return {SESSION_COOKIE_NAME: session_value}
 
-            if not jsessionid:
-                raise RuntimeError("无法获取教务系统会话")
+    async def start_session(self) -> tuple[str, bytes]:
+        """访问登录页获取会话 cookie + 验证码图片"""
+        async with self._make_http_client() as client:
+            # 1. 访问登录页
+            resp = await client.get(f"{self.BASE_URL}/login")
+            session_value = self._extract_session_cookie(resp)
+
+            if not session_value:
+                raise RuntimeError("无法获取教务系统会话，请检查网络是否可访问 zhjw.scu.edu.cn")
+
+            logger.info("获取到教务系统会话 cookie: %s...", session_value[:12])
+
+            # 提取 tokenValue 隐藏字段
+            token_match = re.search(r'name="tokenValue"\s*value="([^"]+)"', resp.text)
+            token_value = token_match.group(1) if token_match else ""
+            logger.info("提取到 tokenValue: %s", token_value[:12] if token_value else "NONE")
 
             # 2. 获取验证码图片
             captcha_resp = await client.get(
                 f"{self.BASE_URL}/img/captcha.jpg",
-                cookies={"JSESSIONID": jsessionid},
+                cookies=self._session_cookies(session_value),
             )
             captcha_bytes = captcha_resp.content
+            logger.info("获取到验证码图片: %d bytes, content-type: %s",
+                        len(captcha_bytes), captcha_resp.headers.get("content-type"))
 
-            # 3. 生成 session_key 并将 JSESSIONID 存入 Redis（5分钟过期）
+            # 3. 存入 Redis（5分钟过期）
+            # 同时保存 session cookie 值和 tokenValue
             session_key = f"jwc_session:{uuid.uuid4().hex}"
-            await self.redis.set(session_key, jsessionid, ex=300)
+            session_data = json.dumps({
+                "cookie": session_value,
+                "token": token_value,
+            })
+            await self.redis.set(session_key, session_data, ex=300)
 
             return session_key, captcha_bytes
 
@@ -102,158 +131,485 @@ class RealJwcClient(BaseJwcClient):
         self, session_key: str, student_id: str, password: str, captcha: str
     ) -> dict | None:
         """用学号 + MD5密码 + 验证码登录教务系统"""
-        jsessionid = await self.redis.get(session_key)
-        if not jsessionid:
+        session_data_str = await self.redis.get(session_key)
+        if not session_data_str:
+            logger.warning("session_key 不存在或已过期: %s", session_key)
             return None
 
-        # MD5 加密密码
-        md5_password = hashlib.md5(password.encode()).hexdigest()
+        # 解析存储的会话数据
+        try:
+            session_data = json.loads(session_data_str)
+            session_value = session_data["cookie"]
+            token_value = session_data.get("token", "")
+        except (json.JSONDecodeError, KeyError):
+            # 兼容旧格式 (纯 cookie 值)
+            session_value = session_data_str
+            token_value = ""
+
+        # 教务系统密码加密: hex_md5(hex_md5(pwd+salt), ver=1.8) + '*' + hex_md5(hex_md5(pwd, ver=1.8), ver=1.8)
+        # ver=1.8 不加盐, 否则加盐 "{Urp602019}"
+        SALT = "{Urp602019}"
+        md5_with_salt = hashlib.md5((password + SALT).encode()).hexdigest()
+        md5_no_salt = hashlib.md5(password.encode()).hexdigest()
+        part1 = hashlib.md5(md5_with_salt.encode()).hexdigest()
+        part2 = hashlib.md5(md5_no_salt.encode()).hexdigest()
+        md5_password = f"{part1}*{part2}"
 
         async with self._make_http_client() as client:
+            client.headers["Referer"] = f"{self.BASE_URL}/login"
+
+            post_data = {
+                "j_username": student_id,
+                "j_password": md5_password,
+                "j_captcha": captcha,
+                "lang": "zh",
+            }
+            if token_value:
+                post_data["tokenValue"] = token_value
+
+            logger.info("尝试登录: student_id=%s, captcha=%s, j_password长度=%d, cookie=%s..., token=%s...",
+                        student_id, captcha, len(md5_password),
+                        session_value[:12], token_value[:12] if token_value else "NONE")
+
             resp = await client.post(
                 f"{self.BASE_URL}/j_spring_security_check",
-                data={
-                    "j_username": student_id,
-                    "j_password": md5_password,
-                    "j_captcha": captcha,
-                },
-                cookies={"JSESSIONID": jsessionid},
+                data=post_data,
+                cookies=self._session_cookies(session_value),
+                follow_redirects=False,
             )
 
-            # 检查是否登录成功（失败会重定向到 /login?error=xxx）
-            final_url = str(resp.url)
-            if "badCredentials" in final_url or "badCaptcha" in final_url or "login" in final_url:
-                await self.redis.delete(session_key)
-                return None
+            # 检查 302 重定向的 Location
+            location = resp.headers.get("location", "")
+            logger.info("登录响应: status=%d, location=%s", resp.status_code, location)
 
-            # 登录成功，更新 session 过期时间（延长到 30 分钟）
-            # 响应可能会更新 JSESSIONID
-            new_jsessionid = jsessionid
-            for cookie in resp.cookies.jar:
-                if cookie.name == "JSESSIONID":
-                    new_jsessionid = cookie.value
-                    break
+            # 检查是否登录失败
+            if resp.status_code in (301, 302, 303, 307):
+                if any(err in location for err in [
+                    "badCredentials", "badCaptcha", "errorCode", "error="
+                ]) or location.endswith("/login"):
+                    logger.warning("登录失败: %s", location)
+                    await self.redis.delete(session_key)
+                    return None
 
-            session_data_key = f"jwc_auth:{student_id}"
-            await self.redis.set(session_data_key, new_jsessionid, ex=1800)
-            await self.redis.delete(session_key)  # 清理临时 session
+            # 登录成功 — 从 302 Location 或 resp 中提取新 cookie
+            new_session = self._extract_session_cookie(resp) or session_value
+            # 如果成功重定向，跟随获取新 cookie
+            if location:
+                follow_resp = await client.get(
+                    location if location.startswith("http") else f"{self.BASE_URL}{location}",
+                    cookies=self._session_cookies(new_session),
+                )
+                new_session = self._extract_session_cookie(follow_resp) or new_session
 
-            # 尝试从教务系统页面提取学生信息
-            student_info = await self._fetch_student_info(client, new_jsessionid)
+            # 存储已认证会话（30分钟过期）
+            auth_key = f"jwc_auth:{student_id}"
+            await self.redis.set(auth_key, new_session, ex=1800)
+            await self.redis.delete(session_key)
+
+            logger.info("登录成功: student_id=%s, auth_key=%s", student_id, auth_key)
+
+            # 提取学生信息
+            student_info = await self._fetch_student_info(client, new_session)
             student_info["student_id"] = student_id
-
             return student_info
 
-    async def _fetch_student_info(self, client: httpx.AsyncClient, jsessionid: str) -> dict:
+    async def _fetch_student_info(self, client: httpx.AsyncClient, session_value: str) -> dict:
         """从教务系统首页提取学生基本信息"""
         try:
             resp = await client.get(
                 f"{self.BASE_URL}/student/index",
-                cookies={"JSESSIONID": jsessionid},
+                cookies=self._session_cookies(session_value),
             )
             html = resp.text
-            # 尝试提取姓名（页面上通常有欢迎信息）
-            name_match = re.search(r"欢迎.*?(\S+?)同学", html)
-            name = name_match.group(1) if name_match else "同学"
+
+            name = "同学"
+            for pattern in [
+                r"欢迎.*?(\S+?)\s*同学",
+                r"姓名[：:]\s*(\S+)",
+                r'class="user-name"[^>]*>([^<]+)',
+                r'id="welcomeMsg"[^>]*>[^<]*?(\S+)\s*同学',
+            ]:
+                m = re.search(pattern, html)
+                if m:
+                    name = m.group(1).strip()
+                    break
+
+            logger.info("提取到学生姓名: %s", name)
             return {"name": name, "campus": None, "major": None, "grade": None}
-        except Exception:
+        except Exception as e:
+            logger.error("提取学生信息失败: %s", e)
             return {"name": "同学", "campus": None, "major": None, "grade": None}
 
     async def get_schedule(self, session_key: str, semester: str) -> list[dict]:
-        """爬取课表数据"""
-        jsessionid = await self.redis.get(session_key)
-        if not jsessionid:
+        """爬取本学期课表 — 不带 planCode 参数获取当前学期"""
+        session_value = await self.redis.get(session_key)
+        if not session_value:
+            logger.warning("课表查询: 会话不存在 %s", session_key)
             return []
 
         async with self._make_http_client() as client:
+            cookies = self._session_cookies(session_value)
+
             try:
+                # 先访问课表页面
+                await client.get(
+                    f"{self.BASE_URL}/student/courseSelect/thisSemesterCurriculum/index",
+                    cookies=cookies,
+                )
+
+                # 获取课表 JSON — 不带 planCode 获取当前学期
                 resp = await client.get(
                     f"{self.BASE_URL}/student/courseSelect/thisSemesterCurriculum/ajaxStudentSchedule/callback",
-                    params={"planCode": semester},
-                    cookies={"JSESSIONID": jsessionid},
+                    cookies=cookies,
+                    headers={"X-Requested-With": "XMLHttpRequest"},
                 )
-                if resp.status_code == 200:
-                    return self._parse_schedule(resp.json())
-                return []
-            except Exception:
+
+                if resp.status_code != 200:
+                    logger.error("课表请求失败: HTTP %d", resp.status_code)
+                    return []
+
+                data = resp.json()
+                logger.info("课表数据键: %s", list(data.keys()) if isinstance(data, dict) else type(data).__name__)
+
+                return self._parse_schedule(data)
+            except Exception as e:
+                logger.error("获取课表异常: %s", e, exc_info=True)
                 return []
 
     def _parse_schedule(self, data: dict) -> list[dict]:
-        """解析教务系统返回的课表 JSON 数据"""
+        """解析 SCU 教务系统课表 JSON
+
+        数据结构:
+        - xkxx: dict of dict, key=课程号_序号, value=课程信息 (选课信息，含教师/课程名，但无具体星期/节次)
+        - dateList: [{selectCourseList: [...]}] (培养方案维度的选课列表)
+        - dgFlag 字段如果是 "(无)" 表示尚未排课
+        """
         courses = []
-        try:
-            # 教务系统课表数据格式可能因版本不同而变化
-            # 这里做通用解析，具体字段需要根据实际返回调整
-            items = data if isinstance(data, list) else data.get("dateList", [])
-            for item in items:
-                course = {
-                    "course_name": item.get("courseName", item.get("name", "")),
-                    "teacher": item.get("teacherName", item.get("teacher", "")),
-                    "location": item.get("roomName", item.get("location", "")),
-                    "weekday": item.get("dayOfWeek", item.get("weekday", 0)),
-                    "start_time": item.get("startTime", ""),
-                    "end_time": item.get("endTime", ""),
-                    "weeks": item.get("weeks", []),
-                    "start_section": item.get("startSection", 0),
-                    "end_section": item.get("endSection", 0),
-                }
-                if course["course_name"]:
-                    courses.append(course)
-        except Exception:
-            pass
+
+        if not isinstance(data, dict):
+            return []
+
+        # xkxx 是 dict-of-dict: {"311246020_01": {courseName: ..., attendClassTeacher: ...}}
+        xkxx = data.get("xkxx", {})
+        if isinstance(xkxx, dict):
+            for course_key, info in xkxx.items():
+                if not isinstance(info, dict):
+                    continue
+
+                course_name = info.get("courseName", "")
+                if not course_name:
+                    continue
+
+                teacher = info.get("attendClassTeacher", "").strip()
+                dg_flag = info.get("dgFlag", "(无)")
+                course_type = info.get("coursePropertiesName", "")
+
+                # dgFlag 包含排课信息，格式可能是 "星期一第1-2节{1-16周}" 或 "(无)"
+                weekday = 0
+                start_section = 0
+                end_section = 0
+                weeks = ""
+                location = ""
+
+                if dg_flag and dg_flag != "(无)":
+                    # 尝试解析排课信息
+                    day_match = re.search(r"星期([一二三四五六日天])", dg_flag)
+                    if day_match:
+                        day_map = {"一": 1, "二": 2, "三": 3, "四": 4,
+                                   "五": 5, "六": 6, "日": 7, "天": 7}
+                        weekday = day_map.get(day_match.group(1), 0)
+
+                    section_match = re.search(r"第(\d+)-(\d+)节", dg_flag)
+                    if section_match:
+                        start_section = int(section_match.group(1))
+                        end_section = int(section_match.group(2))
+
+                    weeks_match = re.search(r"\{([^}]+)\}", dg_flag)
+                    if weeks_match:
+                        weeks = weeks_match.group(1)
+
+                courses.append({
+                    "course_name": course_name,
+                    "teacher": teacher,
+                    "location": location,
+                    "weekday": weekday,
+                    "start_section": start_section,
+                    "end_section": end_section,
+                    "weeks": weeks,
+                    "course_type": course_type,
+                })
+
+        logger.info("成功解析 %d 门课程", len(courses))
         return courses
 
     async def get_scores(self, session_key: str) -> list[dict]:
-        """爬取成绩数据"""
-        jsessionid = await self.redis.get(session_key)
-        if not jsessionid:
+        """爬取全部已过成绩 — URL 包含动态哈希，需先访问 HTML 页面提取"""
+        session_value = await self.redis.get(session_key)
+        if not session_value:
             return []
 
         async with self._make_http_client() as client:
+            cookies = self._session_cookies(session_value)
+
             try:
-                resp = await client.get(
-                    f"{self.BASE_URL}/student/integratedQuery/scoreQuery/allPassingScores/callback",
-                    cookies={"JSESSIONID": jsessionid},
+                # 1. 访问成绩页面 HTML，提取包含动态哈希的 AJAX URL
+                page_resp = await client.get(
+                    f"{self.BASE_URL}/student/integratedQuery/scoreQuery/allPassingScores/index",
+                    cookies=cookies,
                 )
-                if resp.status_code == 200:
-                    return self._parse_scores(resp.json())
-                return []
-            except Exception:
+                if page_resp.status_code != 200:
+                    logger.error("成绩页面请求失败: HTTP %d", page_resp.status_code)
+                    return []
+
+                # 从 HTML 中提取带哈希的 AJAX URL
+                # 格式: /student/integratedQuery/scoreQuery/XXXXXXXXXX/allPassingScores/callback
+                hash_match = re.search(
+                    r"(/student/integratedQuery/scoreQuery/[^/]+/allPassingScores/callback)",
+                    page_resp.text,
+                )
+                if not hash_match:
+                    logger.error("未能从成绩页面提取 AJAX URL")
+                    return []
+
+                ajax_url = hash_match.group(1)
+                logger.info("成绩 AJAX URL: %s", ajax_url)
+
+                # 2. 请求 AJAX 接口获取成绩数据
+                resp = await client.get(
+                    f"{self.BASE_URL}{ajax_url}",
+                    cookies=cookies,
+                    headers={"X-Requested-With": "XMLHttpRequest"},
+                )
+
+                if resp.status_code != 200:
+                    logger.error("成绩 AJAX 请求失败: HTTP %d", resp.status_code)
+                    return []
+
+                data = resp.json()
+                return self._parse_scores(data)
+            except Exception as e:
+                logger.error("获取成绩异常: %s", e, exc_info=True)
                 return []
 
     def _parse_scores(self, data: dict) -> list[dict]:
-        """解析成绩数据"""
+        """解析 SCU 教务系统成绩 JSON
+
+        数据结构:
+        - lnList: 按学期分组的成绩列表
+          - lnList[i].cjList: 该学期的课程成绩数组
+          - lnList[i].cjlx / zxjxjhh: 学期标识
+        - 每门课程: courseName, courseScore/cj, credit, gradePointScore, courseAttributeName, gradeName
+        """
         scores = []
-        try:
-            items = data if isinstance(data, list) else data.get("list", [])
-            for item in items:
-                score = {
-                    "course_name": item.get("courseName", ""),
-                    "credit": item.get("credit", 0),
-                    "score": item.get("score", ""),
-                    "gpa": item.get("gradePoint", 0),
-                    "semester": item.get("semester", ""),
-                    "course_type": item.get("courseType", ""),
-                }
-                if score["course_name"]:
-                    scores.append(score)
-        except Exception:
-            pass
+
+        if not isinstance(data, dict):
+            return []
+
+        ln_list = data.get("lnList", [])
+        if not isinstance(ln_list, list):
+            return []
+
+        for ln in ln_list:
+            if not isinstance(ln, dict):
+                continue
+
+            semester_label = ln.get("cjlx", ln.get("zxjxjhh", ""))
+            cj_list = ln.get("cjList", [])
+
+            for cj in cj_list:
+                if not isinstance(cj, dict):
+                    continue
+
+                course_name = cj.get("courseName", "")
+                if not course_name:
+                    continue
+
+                # 成绩可能在 courseScore 或 cj 字段
+                score_val = cj.get("courseScore", cj.get("cj", ""))
+                credit_val = cj.get("credit", 0)
+                gpa_val = cj.get("gradePointScore", 0)
+                course_type = cj.get("courseAttributeName", "")
+                grade_name = cj.get("gradeName", "")
+
+                # 学期信息
+                semester = semester_label
+                id_info = cj.get("id", {})
+                if isinstance(id_info, dict):
+                    plan_num = id_info.get("executiveEducationPlanNumber", "")
+                    if plan_num:
+                        semester = plan_num
+
+                scores.append({
+                    "course_name": str(course_name),
+                    "credit": float(credit_val) if credit_val else 0,
+                    "score": str(score_val),
+                    "gpa": float(gpa_val) if gpa_val else 0,
+                    "semester": str(semester),
+                    "course_type": str(course_type),
+                    "grade": str(grade_name),
+                })
+
+        logger.info("成功解析 %d 条成绩 (跨 %d 个学期)", len(scores), len(ln_list))
         return scores
+
+    async def get_plan_completion(self, session_key: str) -> dict:
+        """获取方案完成情况 — 从成绩数据聚合统计"""
+        # 直接从成绩数据计算学分完成情况
+        scores = await self.get_scores(session_key)
+        if not scores:
+            return {"total_required_credits": 0, "earned_credits": 0, "categories": []}
+
+        # 按课程属性分类统计
+        cat_map: dict[str, dict] = {}
+        total_credits = 0.0
+
+        for s in scores:
+            credit = s.get("credit", 0)
+            course_type = s.get("course_type", "其他") or "其他"
+            total_credits += credit
+
+            if course_type not in cat_map:
+                cat_map[course_type] = {"name": course_type, "earned_credits": 0}
+            cat_map[course_type]["earned_credits"] += credit
+
+        categories = list(cat_map.values())
+        # 排序：必修在前
+        categories.sort(key=lambda c: (0 if "必修" in c["name"] else 1, c["name"]))
+
+        return {
+            "total_required_credits": 0,  # 方案要求学分需要从页面提取，暂用0
+            "earned_credits": total_credits,
+            "categories": [{
+                "name": c["name"],
+                "required_credits": 0,
+                "earned_credits": c["earned_credits"],
+            } for c in categories],
+        }
+
+    @staticmethod
+    def _extract_session_cookie(resp: httpx.Response) -> str | None:
+        """从 httpx 响应中提取教务系统 session cookie"""
+        # 从 cookies
+        val = resp.cookies.get(SESSION_COOKIE_NAME)
+        if val:
+            return val
+
+        # 从 cookie jar
+        for cookie in resp.cookies.jar:
+            if cookie.name == SESSION_COOKIE_NAME:
+                return cookie.value
+
+        # 从 Set-Cookie header
+        set_cookie = resp.headers.get("set-cookie", "")
+        m = re.search(rf"{re.escape(SESSION_COOKIE_NAME)}=([^;]+)", set_cookie)
+        if m:
+            return m.group(1)
+
+        # 兜底: 尝试 JSESSIONID
+        jsessionid = resp.cookies.get("JSESSIONID")
+        if jsessionid:
+            return jsessionid
+
+        return None
 
 
 class MockJwcClient(BaseJwcClient):
     """开发/测试环境模拟客户端"""
 
     async def start_session(self) -> tuple[str, bytes]:
-        # 返回一个假的 session_key 和一个 1x1 透明 PNG 作为验证码
-        fake_captcha = (
-            b'\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01'
-            b'\x00\x00\x00\x01\x08\x06\x00\x00\x00\x1f\x15\xc4\x89'
-            b'\x00\x00\x00\nIDATx\x9cc\x00\x01\x00\x00\x05\x00\x01'
-            b'\r\n\xb4\x00\x00\x00\x00IEND\xaeB`\x82'
-        )
-        return f"mock_session:{uuid.uuid4().hex}", fake_captcha
+        captcha_bytes = self._generate_captcha_image()
+        return f"mock_session:{uuid.uuid4().hex}", captcha_bytes
+
+    @staticmethod
+    def _generate_captcha_image() -> bytes:
+        """生成一张带随机4位字符的简单验证码 PNG 图片"""
+        import random
+
+        chars = "".join(random.choices("abcdefghjkmnpqrstuvwxyz2345678", k=4))
+
+        font: dict[str, list[str]] = {
+            "a": ["01110","10001","10001","11111","10001","10001","10001"],
+            "b": ["11110","10001","10001","11110","10001","10001","11110"],
+            "c": ["01110","10001","10000","10000","10000","10001","01110"],
+            "d": ["11100","10010","10001","10001","10001","10010","11100"],
+            "e": ["11111","10000","10000","11110","10000","10000","11111"],
+            "f": ["11111","10000","10000","11110","10000","10000","10000"],
+            "g": ["01110","10001","10000","10111","10001","10001","01110"],
+            "h": ["10001","10001","10001","11111","10001","10001","10001"],
+            "j": ["00111","00010","00010","00010","00010","10010","01100"],
+            "k": ["10001","10010","10100","11000","10100","10010","10001"],
+            "m": ["10001","11011","10101","10101","10001","10001","10001"],
+            "n": ["10001","11001","10101","10011","10001","10001","10001"],
+            "p": ["11110","10001","10001","11110","10000","10000","10000"],
+            "q": ["01110","10001","10001","10001","10101","10010","01101"],
+            "r": ["11110","10001","10001","11110","10100","10010","10001"],
+            "s": ["01111","10000","10000","01110","00001","00001","11110"],
+            "t": ["11111","00100","00100","00100","00100","00100","00100"],
+            "u": ["10001","10001","10001","10001","10001","10001","01110"],
+            "v": ["10001","10001","10001","10001","01010","01010","00100"],
+            "w": ["10001","10001","10001","10101","10101","10101","01010"],
+            "x": ["10001","10001","01010","00100","01010","10001","10001"],
+            "y": ["10001","10001","01010","00100","00100","00100","00100"],
+            "z": ["11111","00001","00010","00100","01000","10000","11111"],
+            "2": ["01110","10001","00001","00010","00100","01000","11111"],
+            "3": ["01110","10001","00001","00110","00001","10001","01110"],
+            "4": ["00010","00110","01010","10010","11111","00010","00010"],
+            "5": ["11111","10000","11110","00001","00001","10001","01110"],
+            "6": ["01110","10001","10000","11110","10001","10001","01110"],
+            "7": ["11111","00001","00010","00100","01000","01000","01000"],
+            "8": ["01110","10001","10001","01110","10001","10001","01110"],
+        }
+
+        width, height = 100, 30
+        import random as rnd
+        pixels = []
+        for _y in range(height):
+            for _x in range(width):
+                nr = rnd.randint(-10, 10)
+                pixels.append((min(255, max(0, 240 + nr)),
+                               min(255, max(0, 240 + nr)),
+                               min(255, max(0, 240 + nr))))
+
+        colors = [(200, 50, 50), (50, 50, 200), (50, 150, 50), (150, 50, 150)]
+        for ci, ch in enumerate(chars):
+            glyph = font.get(ch, font["a"])
+            x_off = 10 + ci * 22
+            y_off = 5 + rnd.randint(-2, 2)
+            color = colors[ci % len(colors)]
+            for gy, row in enumerate(glyph):
+                for gx, pixel in enumerate(row):
+                    if pixel == "1":
+                        for dy in range(3):
+                            for dx in range(3):
+                                px = x_off + gx * 3 + dx
+                                py = y_off + gy * 3 + dy
+                                if 0 <= px < width and 0 <= py < height:
+                                    pixels[py * width + px] = color
+
+        for _ in range(80):
+            nx = rnd.randint(0, width - 1)
+            ny = rnd.randint(0, height - 1)
+            pixels[ny * width + nx] = (rnd.randint(0, 200), rnd.randint(0, 200), rnd.randint(0, 200))
+
+        raw_data = b""
+        for y in range(height):
+            raw_data += b"\x00"
+            for x in range(width):
+                r, g, b = pixels[y * width + x]
+                raw_data += struct.pack("BBB", r, g, b)
+
+        compressed = zlib.compress(raw_data)
+
+        def png_chunk(chunk_type: bytes, data: bytes) -> bytes:
+            chunk = chunk_type + data
+            crc = zlib.crc32(chunk) & 0xFFFFFFFF
+            return struct.pack(">I", len(data)) + chunk + struct.pack(">I", crc)
+
+        png = b"\x89PNG\r\n\x1a\n"
+        png += png_chunk(b"IHDR", struct.pack(">IIBBBBB", width, height, 8, 2, 0, 0, 0))
+        png += png_chunk(b"IDAT", compressed)
+        png += png_chunk(b"IEND", b"")
+        return png
 
     async def login(
         self, session_key: str, student_id: str, password: str, captcha: str
@@ -270,69 +626,39 @@ class MockJwcClient(BaseJwcClient):
 
     async def get_schedule(self, session_key: str, semester: str) -> list[dict]:
         return [
-            {
-                "course_name": "高等数学 (A)",
-                "teacher": "张教授",
-                "location": "一教 B305",
-                "weekday": 1,
-                "start_time": "08:00",
-                "end_time": "09:40",
-                "weeks": list(range(1, 17)),
-                "start_section": 1,
-                "end_section": 2,
-            },
-            {
-                "course_name": "数据结构",
-                "teacher": "李教授",
-                "location": "二教 C201",
-                "weekday": 1,
-                "start_time": "10:10",
-                "end_time": "11:50",
-                "weeks": list(range(1, 17)),
-                "start_section": 3,
-                "end_section": 4,
-            },
-            {
-                "course_name": "计算机网络",
-                "teacher": "王教授",
-                "location": "三教 A108",
-                "weekday": 3,
-                "start_time": "14:00",
-                "end_time": "15:40",
-                "weeks": list(range(1, 17)),
-                "start_section": 5,
-                "end_section": 6,
-            },
-            {
-                "course_name": "操作系统",
-                "teacher": "赵教授",
-                "location": "基教 A301",
-                "weekday": 4,
-                "start_time": "08:00",
-                "end_time": "09:40",
-                "weeks": list(range(1, 17)),
-                "start_section": 1,
-                "end_section": 2,
-            },
-            {
-                "course_name": "软件工程导论",
-                "teacher": "刘教授",
-                "location": "基教 B201",
-                "weekday": 5,
-                "start_time": "10:10",
-                "end_time": "11:50",
-                "weeks": list(range(1, 17)),
-                "start_section": 3,
-                "end_section": 4,
-            },
+            {"course_name": "高等数学 (A)", "teacher": "张教授", "location": "一教 B305",
+             "weekday": 1, "start_section": 1, "end_section": 2, "weeks": "1-16"},
+            {"course_name": "数据结构", "teacher": "李教授", "location": "二教 C201",
+             "weekday": 1, "start_section": 3, "end_section": 4, "weeks": "1-16"},
+            {"course_name": "计算机网络", "teacher": "王教授", "location": "三教 A108",
+             "weekday": 3, "start_section": 5, "end_section": 6, "weeks": "1-16"},
+            {"course_name": "操作系统", "teacher": "赵教授", "location": "基教 A301",
+             "weekday": 4, "start_section": 1, "end_section": 2, "weeks": "1-16"},
+            {"course_name": "软件工程导论", "teacher": "刘教授", "location": "基教 B201",
+             "weekday": 5, "start_section": 3, "end_section": 4, "weeks": "1-16"},
         ]
 
     async def get_scores(self, session_key: str) -> list[dict]:
         return [
-            {"course_name": "高等数学 (A)", "credit": 5, "score": "92", "gpa": 3.7, "semester": "2024-2025-1", "course_type": "必修"},
-            {"course_name": "线性代数", "credit": 3, "score": "88", "gpa": 3.3, "semester": "2024-2025-1", "course_type": "必修"},
-            {"course_name": "大学英语", "credit": 2, "score": "85", "gpa": 3.0, "semester": "2024-2025-1", "course_type": "必修"},
+            {"course_name": "高等数学 (A)", "credit": 5, "score": "92", "gpa": 3.7,
+             "semester": "2024-2025-1", "course_type": "必修"},
+            {"course_name": "线性代数", "credit": 3, "score": "88", "gpa": 3.3,
+             "semester": "2024-2025-1", "course_type": "必修"},
+            {"course_name": "大学英语", "credit": 2, "score": "85", "gpa": 3.0,
+             "semester": "2024-2025-1", "course_type": "必修"},
         ]
+
+    async def get_plan_completion(self, session_key: str) -> dict:
+        return {
+            "total_required_credits": 170,
+            "earned_credits": 65,
+            "categories": [
+                {"name": "必修", "required_credits": 100, "earned_credits": 45},
+                {"name": "选修", "required_credits": 40, "earned_credits": 12},
+                {"name": "通识", "required_credits": 20, "earned_credits": 6},
+                {"name": "实践", "required_credits": 10, "earned_credits": 2},
+            ],
+        }
 
 
 def get_jwc_client(redis_client=None) -> BaseJwcClient:
@@ -340,5 +666,10 @@ def get_jwc_client(redis_client=None) -> BaseJwcClient:
     from shared.config import settings
 
     if getattr(settings, "jwc_use_mock", True):
+        logger.info("使用 MockJwcClient (开发模式)")
         return MockJwcClient()
-    return RealJwcClient(redis_client=redis_client)
+    logger.info("使用 RealJwcClient → %s", settings.jwc_base_url)
+    return RealJwcClient(
+        redis_client=redis_client,
+        base_url=getattr(settings, "jwc_base_url", "http://zhjw.scu.edu.cn"),
+    )

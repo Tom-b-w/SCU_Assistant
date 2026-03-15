@@ -1,7 +1,12 @@
+import os
+
 import pytest
 from httpx import AsyncClient, ASGITransport
 
-from gateway.main import create_app
+# 测试环境始终使用 mock 模式
+os.environ["JWC_USE_MOCK"] = "true"
+
+from gateway.main import create_app  # noqa: E402
 
 
 @pytest.fixture

@@ -6,6 +6,7 @@ from shared.cache import redis_client
 from shared.database import engine
 from shared.exceptions import register_error_handlers
 from gateway.auth.router import router as auth_router
+from services.academic.router import router as academic_router
 
 
 def create_app() -> FastAPI:
@@ -19,6 +20,7 @@ def create_app() -> FastAPI:
     setup_cors(app)
     register_error_handlers(app)
     app.include_router(auth_router)
+    app.include_router(academic_router)
 
     @app.get("/health")
     async def health_check():

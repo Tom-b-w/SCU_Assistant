@@ -145,7 +145,7 @@ export default function LoginPage() {
                   <RefreshCw className="h-4 w-4 animate-spin text-white/50" />
                 ) : captchaImage ? (
                   <img
-                    src={`data:image/jpeg;base64,${captchaImage}`}
+                    src={`data:image/${captchaImage.startsWith("iVBOR") ? "png" : "jpeg"};base64,${captchaImage}`}
                     alt="验证码"
                     className="h-full w-full object-contain"
                   />
