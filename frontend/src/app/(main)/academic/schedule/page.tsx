@@ -169,7 +169,7 @@ export default function SchedulePage() {
                                   <span className="truncate text-[10px]">{course.location || "未知"}</span>
                                 </div>
                                 <p className="mt-0.5 truncate text-[10px] opacity-70">
-                                  {course.teacher}
+                                  {course.teacher}{course.course_type ? ` · ${course.course_type}` : ""}
                                 </p>
                                 {course.weeks && (
                                   <p className="mt-0.5 text-[10px] opacity-50">{course.weeks}</p>
@@ -217,7 +217,7 @@ export default function SchedulePage() {
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-medium truncate">{c.course_name}</p>
                   <p className="text-xs text-muted-foreground">
-                    周{WEEKDAYS[c.weekday - 1]?.replace("周", "")} 第{c.start_section}-{c.end_section}节 · {c.location} · {c.teacher}
+                    周{WEEKDAYS[c.weekday - 1]?.replace("周", "")} 第{c.start_section}-{c.end_section}节 · {c.location || "待定"} · {c.teacher}{c.course_type ? ` · ${c.course_type}` : ""}
                   </p>
                 </div>
               </div>

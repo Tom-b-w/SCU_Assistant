@@ -30,3 +30,12 @@ Thumbs.db
 
 # Superpowers
 .superpowers/
+
+# Office temp files
+~$*
+
+# Claude
+.claude/
+
+# Debug files
+debug_captcha.jpg

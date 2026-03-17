@@ -26,6 +26,11 @@ class RateLimitError(AppError):
         )
 
 
+class SessionExpiredError(AppError):
+    def __init__(self, message: str = "教务系统会话已过期，请重新登录"):
+        super().__init__(code="SESSION_EXPIRED", message=message, status=403)
+
+
 class ServiceUnavailableError(AppError):
     def __init__(self, message: str = "Service temporarily unavailable"):
         super().__init__(code="SERVICE_UNAVAILABLE", message=message, status=503)

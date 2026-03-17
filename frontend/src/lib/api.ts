@@ -21,13 +21,25 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
-// Response interceptor: handle 401 → try refresh
+// Response interceptor: handle 401 → try refresh, 403 SESSION_EXPIRED → re-login
 api.interceptors.response.use(
   (response) => response,
   async (error) => {
     const originalRequest = error.config;
+    const status = error.response?.status;
+    const errorCode = error.response?.data?.error?.code;
 
-    if (error.response?.status === 401 && !originalRequest._retry) {
+    // 教务系统会话过期 — 清除登录态，跳转登录页
+    if (status === 403 && errorCode === "SESSION_EXPIRED") {
+      const { useAuthStore } = require("@/stores/auth-store");
+      useAuthStore.getState().logout();
+      if (typeof window !== "undefined") {
+        window.location.href = "/login";
+      }
+      return Promise.reject(error);
+    }
+
+    if (status === 401 && !originalRequest._retry) {
       originalRequest._retry = true;
       try {
         const { data } = await api.post("/api/auth/refresh");

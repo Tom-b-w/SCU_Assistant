@@ -98,8 +98,12 @@ export default function SettingsPage() {
                 <GraduationCap className="h-3.5 w-3.5" />
                 {user?.student_id || "—"}
               </p>
-              {user?.major && (
-                <p className="text-xs">{user.major}</p>
+              {(user?.major || user?.campus || user?.grade) && (
+                <p className="text-xs">
+                  {[user?.major, user?.grade ? `${user.grade}级` : null, user?.campus ? `${user.campus}校区` : null]
+                    .filter(Boolean)
+                    .join(" · ")}
+                </p>
               )}
             </div>
           </div>

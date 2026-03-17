@@ -8,6 +8,7 @@ export interface Course {
   end_section: number;
   location: string;
   weeks: string;
+  course_type: string;
 }
 
 export interface Score {
@@ -17,6 +18,7 @@ export interface Score {
   gpa: number;
   semester: string;
   course_type: string;
+  grade: string;
 }
 
 export interface CreditCategory {

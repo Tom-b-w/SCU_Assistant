@@ -69,8 +69,13 @@ export default function DashboardPage() {
         setCourses(scheduleData.courses);
         setScores(scoresData.scores);
         setPlanCompletion(planData);
-      } catch {
-        setError("获取教务数据失败，可能需要重新登录");
+      } catch (err: unknown) {
+        const axiosErr = err as { response?: { data?: { error?: { code?: string } } } };
+        if (axiosErr?.response?.data?.error?.code === "SESSION_EXPIRED") {
+          // 拦截器会自动跳转登录页，这里不需要额外处理
+          return;
+        }
+        setError("获取教务数据失败，请稍后重试");
       } finally {
         setLoading(false);
       }
@@ -90,13 +95,22 @@ export default function DashboardPage() {
     ? (scores.reduce((sum, s) => sum + s.gpa * s.credit, 0) / totalCredits).toFixed(2)
     : "--";
 
-  const creditProgress = planCompletion
-    ? Math.min(100, Math.round((planCompletion.earned_credits / Math.max(planCompletion.total_required_credits, 1)) * 100))
+  const hasRequiredCredits = planCompletion && planCompletion.total_required_credits > 0;
+  const creditProgress = hasRequiredCredits
+    ? Math.min(100, Math.round((planCompletion.earned_credits / planCompletion.total_required_credits) * 100))
     : 0;
+
+  const earnedCreditsDisplay = loading
+    ? "..."
+    : planCompletion
+      ? hasRequiredCredits
+        ? `${planCompletion.earned_credits}/${planCompletion.total_required_credits}`
+        : `${planCompletion.earned_credits}`
+      : `${totalCredits}`;
 
   const quickStats = [
     { label: "今日课程", value: loading ? "..." : `${todayCourses.length}节`, icon: CalendarDays, color: "from-blue-500 to-blue-600", href: "/academic/schedule" },
-    { label: "已修学分", value: loading ? "..." : planCompletion ? `${planCompletion.earned_credits}/${planCompletion.total_required_credits}` : `${totalCredits}`, icon: Award, color: "from-orange-500 to-red-500", href: "/academic/scores" },
+    { label: "已修学分", value: earnedCreditsDisplay, icon: Award, color: "from-orange-500 to-red-500", href: "/academic/scores" },
     { label: "加权均分", value: loading ? "..." : avgScore, icon: TrendingUp, color: "from-emerald-500 to-green-600", href: "/academic/scores" },
     { label: "平均绩点", value: loading ? "..." : avgGpa, icon: GraduationCap, color: "from-cyan-500 to-blue-500", href: "/academic/scores" },
   ];
@@ -209,16 +223,18 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        {/* Credit Progress (方案完成情况) */}
+        {/* Credit Progress (已修学分统计) */}
         <div className="rounded-xl bg-white p-5 shadow-sm ring-1 ring-black/[0.04] dark:bg-gray-900 dark:ring-white/[0.06]">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-500/10">
                 <Target className="h-4 w-4 text-emerald-500" />
               </div>
-              <h3 className="font-semibold">学分完成进度</h3>
+              <h3 className="font-semibold">已修学分统计</h3>
             </div>
-            <span className="text-xs text-muted-foreground">{creditProgress}%</span>
+            {hasRequiredCredits && (
+              <span className="text-xs text-muted-foreground">{creditProgress}%</span>
+            )}
           </div>
           <div className="mt-4">
             {loading ? (
@@ -228,25 +244,27 @@ export default function DashboardPage() {
               </div>
             ) : planCompletion ? (
               <div className="space-y-4">
-                {/* 总进度条 */}
+                {/* 总学分 */}
                 <div>
                   <div className="flex justify-between text-sm mb-1">
-                    <span className="text-muted-foreground">总学分</span>
-                    <span className="font-medium">{planCompletion.earned_credits} / {planCompletion.total_required_credits}</span>
+                    <span className="text-muted-foreground">已修总学分</span>
+                    <span className="font-medium">
+                      {planCompletion.earned_credits}
+                      {hasRequiredCredits ? ` / ${planCompletion.total_required_credits}` : " 学分"}
+                    </span>
                   </div>
-                  <div className="h-3 w-full rounded-full bg-muted/50 overflow-hidden">
-                    <div
-                      className="h-full rounded-full bg-gradient-to-r from-emerald-500 to-green-500 transition-all duration-500"
-                      style={{ width: `${creditProgress}%` }}
-                    />
-                  </div>
+                  {hasRequiredCredits && (
+                    <div className="h-3 w-full rounded-full bg-muted/50 overflow-hidden">
+                      <div
+                        className="h-full rounded-full bg-gradient-to-r from-emerald-500 to-green-500 transition-all duration-500"
+                        style={{ width: `${creditProgress}%` }}
+                      />
+                    </div>
+                  )}
                 </div>
 
-                {/* 分类进度 */}
+                {/* 分类统计 */}
                 {planCompletion.categories.map((cat, i) => {
-                  const catProgress = cat.required_credits > 0
-                    ? Math.min(100, Math.round((cat.earned_credits / cat.required_credits) * 100))
-                    : 0;
                   const barColors = [
                     "from-blue-400 to-blue-500",
                     "from-purple-400 to-purple-500",
@@ -254,16 +272,20 @@ export default function DashboardPage() {
                     "from-pink-400 to-pink-500",
                     "from-cyan-400 to-cyan-500",
                   ];
+                  // 无要求学分时，用占总学分的比例来展示柱状条
+                  const barWidth = planCompletion.earned_credits > 0
+                    ? Math.round((cat.earned_credits / planCompletion.earned_credits) * 100)
+                    : 0;
                   return (
                     <div key={i}>
                       <div className="flex justify-between text-xs mb-1">
                         <span className="text-muted-foreground">{cat.name}</span>
-                        <span>{cat.earned_credits}/{cat.required_credits} ({catProgress}%)</span>
+                        <span className="font-medium">{cat.earned_credits} 学分</span>
                       </div>
                       <div className="h-2 w-full rounded-full bg-muted/50 overflow-hidden">
                         <div
                           className={`h-full rounded-full bg-gradient-to-r ${barColors[i % barColors.length]} transition-all duration-500`}
-                          style={{ width: `${catProgress}%` }}
+                          style={{ width: `${barWidth}%` }}
                         />
                       </div>
                     </div>

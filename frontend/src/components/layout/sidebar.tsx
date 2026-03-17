@@ -13,12 +13,14 @@ import {
   LayoutDashboard,
   GraduationCap,
   Sparkles,
+  TrendingUp,
 } from "lucide-react";
 
 const navItems = [
   { href: "/", label: "仪表盘", icon: LayoutDashboard, color: "text-blue-500" },
   { href: "/chat", label: "AI 问答", icon: MessageSquare, color: "text-purple-500" },
   { href: "/academic/schedule", label: "课程表", icon: CalendarDays, color: "text-emerald-500" },
+  { href: "/academic/scores", label: "成绩查询", icon: TrendingUp, color: "text-amber-500" },
   { href: "/academic/deadline", label: "DDL 追踪", icon: BookOpen, color: "text-orange-500" },
   { href: "/food/canteen", label: "食堂导航", icon: UtensilsCrossed, color: "text-rose-500" },
   { href: "/campus/bus", label: "校车时刻", icon: Bus, color: "text-cyan-500" },
