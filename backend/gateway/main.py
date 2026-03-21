@@ -7,6 +7,11 @@ from shared.database import engine
 from shared.exceptions import register_error_handlers
 from gateway.auth.router import router as auth_router
 from services.academic.router import router as academic_router
+from services.chat.router import router as chat_router
+from services.deadline.router import router as deadline_router
+from services.rag.router import router as rag_router
+from services.quiz.router import router as quiz_router
+from services.studyplan.router import router as studyplan_router
 
 
 def create_app() -> FastAPI:
@@ -21,6 +26,11 @@ def create_app() -> FastAPI:
     register_error_handlers(app)
     app.include_router(auth_router)
     app.include_router(academic_router)
+    app.include_router(chat_router)
+    app.include_router(deadline_router)
+    app.include_router(rag_router)
+    app.include_router(quiz_router)
+    app.include_router(studyplan_router)
 
     @app.get("/health")
     async def health_check():

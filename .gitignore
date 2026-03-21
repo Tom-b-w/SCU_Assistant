@@ -39,3 +39,6 @@ Thumbs.db
 
 # Debug files
 debug_captcha.jpg
+
+# ChromaDB data
+data/

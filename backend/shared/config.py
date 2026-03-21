@@ -13,14 +13,23 @@ class Settings(BaseSettings):
     jwt_access_token_expire_minutes: int = 30
     jwt_refresh_token_expire_days: int = 7
 
-    # LLM
+    # LLM (Anthropic-compatible API)
     llm_api_key: str = ""
-    llm_base_url: str = "https://dashscope.aliyuncs.com/compatible-mode/v1"
-    llm_model: str = "qwen-plus"
+    llm_base_url: str = "https://api3.xhub.chat"
+    llm_auth_token: str = ""
+    llm_model: str = "claude-sonnet-4-20250514"
 
     # 教务系统
     jwc_use_mock: bool = True
     jwc_base_url: str = "http://zhjw.scu.edu.cn"
+
+    # Embedding 配置
+    embedding_model: str = "text-embedding-3-small"
+    embedding_api_key: str = ""        # 留空则复用 llm_api_key
+    embedding_base_url: str = ""       # 留空则复用 llm_base_url
+
+    # ChromaDB 配置
+    chroma_persist_dir: str = "./data/chroma"
 
     # Rate Limiting
     rate_limit_per_minute: int = 60
