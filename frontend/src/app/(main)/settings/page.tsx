@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useAuthStore } from "@/stores/auth-store";
+import { useTheme } from "next-themes";
 import { logout } from "@/lib/auth";
 import {
   Settings,
@@ -19,6 +20,7 @@ import { Button } from "@/components/ui/button";
 export default function SettingsPage() {
   const router = useRouter();
   const { user, logout: clearAuth } = useAuthStore();
+  const { theme, setTheme } = useTheme();
 
   async function handleLogout() {
     try {
@@ -38,7 +40,9 @@ export default function SettingsPage() {
           label: "深色模式",
           description: "切换暗色/亮色主题",
           action: "toggle",
-          disabled: true,
+          disabled: false,
+          active: theme === "dark",
+          onToggle: () => setTheme(theme === "dark" ? "light" : "dark"),
         },
         {
           icon: Bell,
@@ -122,6 +126,7 @@ export default function SettingsPage() {
               return (
                 <div
                   key={item.label}
+                  onClick={item.onToggle}
                   className={`flex items-center gap-3 px-4 py-3.5 ${
                     i > 0 ? "border-t border-border/30" : ""
                   } ${item.disabled ? "opacity-50" : "cursor-pointer hover:bg-muted/30"} transition-colors`}
@@ -134,8 +139,16 @@ export default function SettingsPage() {
                     <p className="text-xs text-muted-foreground">{item.description}</p>
                   </div>
                   {item.action === "toggle" && (
-                    <div className="h-5 w-9 rounded-full bg-muted">
-                      <div className="h-5 w-5 rounded-full bg-white shadow-sm ring-1 ring-black/10" />
+                    <div
+                      className={`h-5 w-9 rounded-full transition-colors ${
+                        item.active ? "bg-primary" : "bg-muted"
+                      }`}
+                    >
+                      <div
+                        className={`h-5 w-5 rounded-full bg-white shadow-sm ring-1 ring-black/10 transition-transform ${
+                          item.active ? "translate-x-4" : ""
+                        }`}
+                      />
                     </div>
                   )}
                   {item.action === "link" && (

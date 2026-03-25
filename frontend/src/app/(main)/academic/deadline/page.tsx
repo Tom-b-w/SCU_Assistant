@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -12,16 +12,15 @@ import {
   AlertTriangle,
   Trash2,
   X,
+  Loader2,
 } from "lucide-react";
-
-interface Deadline {
-  id: string;
-  title: string;
-  course_name: string;
-  due_date: string;
-  priority: "low" | "medium" | "high";
-  status: "pending" | "completed";
-}
+import {
+  getDeadlines,
+  createDeadline,
+  updateDeadline,
+  deleteDeadline,
+  type Deadline,
+} from "@/lib/deadline";
 
 const PRIORITY_CONFIG = {
   high: { label: "紧急", color: "bg-red-500", badge: "bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300" },
@@ -35,58 +34,94 @@ function daysUntil(dateStr: string) {
 }
 
 export default function DeadlinePage() {
-  const [deadlines, setDeadlines] = useState<Deadline[]>([
-    // Demo data - will be replaced with API data later
-    { id: "1", title: "操作系统实验报告", course_name: "操作系统", due_date: "2026-03-20T23:59:00", priority: "high", status: "pending" },
-    { id: "2", title: "数据库课程设计文档", course_name: "数据库原理", due_date: "2026-03-25T23:59:00", priority: "medium", status: "pending" },
-    { id: "3", title: "英语阅读周报", course_name: "大学英语", due_date: "2026-03-18T23:59:00", priority: "low", status: "pending" },
-    { id: "4", title: "线性代数第三章作业", course_name: "线性代数", due_date: "2026-03-12T23:59:00", priority: "medium", status: "completed" },
-  ]);
+  const [deadlines, setDeadlines] = useState<Deadline[]>([]);
+  const [loading, setLoading] = useState(true);
   const [showAdd, setShowAdd] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
   const [newTitle, setNewTitle] = useState("");
   const [newCourse, setNewCourse] = useState("");
   const [newDate, setNewDate] = useState("");
   const [newPriority, setNewPriority] = useState<"low" | "medium" | "high">("medium");
   const [filter, setFilter] = useState<"all" | "pending" | "completed">("all");
 
+  const fetchDeadlines = useCallback(async () => {
+    try {
+      const data = await getDeadlines();
+      setDeadlines(data);
+    } catch {
+      // silently fail — user might not be authenticated yet
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchDeadlines();
+  }, [fetchDeadlines]);
+
   const filtered = deadlines
-    .filter((d) => filter === "all" || d.status === filter)
+    .filter((d) => {
+      if (filter === "pending") return !d.completed;
+      if (filter === "completed") return d.completed;
+      return true;
+    })
     .sort((a, b) => {
-      if (a.status !== b.status) return a.status === "pending" ? -1 : 1;
+      if (a.completed !== b.completed) return a.completed ? 1 : -1;
       const pa = { high: 0, medium: 1, low: 2 };
       return pa[a.priority] - pa[b.priority] || new Date(a.due_date).getTime() - new Date(b.due_date).getTime();
     });
 
-  function addDeadline() {
+  async function addDeadline() {
     if (!newTitle || !newDate) return;
-    const dl: Deadline = {
-      id: Date.now().toString(),
-      title: newTitle,
-      course_name: newCourse,
-      due_date: newDate,
-      priority: newPriority,
-      status: "pending",
-    };
-    setDeadlines([...deadlines, dl]);
-    setNewTitle("");
-    setNewCourse("");
-    setNewDate("");
-    setNewPriority("medium");
-    setShowAdd(false);
+    setSubmitting(true);
+    try {
+      const created = await createDeadline({
+        title: newTitle,
+        course: newCourse || undefined,
+        due_date: new Date(newDate).toISOString(),
+        priority: newPriority,
+      });
+      setDeadlines([...deadlines, created]);
+      setNewTitle("");
+      setNewCourse("");
+      setNewDate("");
+      setNewPriority("medium");
+      setShowAdd(false);
+    } catch {
+      // TODO: toast error
+    } finally {
+      setSubmitting(false);
+    }
   }
 
-  function toggleStatus(id: string) {
-    setDeadlines(deadlines.map((d) =>
-      d.id === id ? { ...d, status: d.status === "pending" ? "completed" : "pending" } : d
-    ));
+  async function toggleStatus(dl: Deadline) {
+    try {
+      const updated = await updateDeadline(dl.id, { completed: !dl.completed });
+      setDeadlines(deadlines.map((d) => (d.id === dl.id ? updated : d)));
+    } catch {
+      // TODO: toast error
+    }
   }
 
-  function removeDeadline(id: string) {
-    setDeadlines(deadlines.filter((d) => d.id !== id));
+  async function removeDl(id: number) {
+    try {
+      await deleteDeadline(id);
+      setDeadlines(deadlines.filter((d) => d.id !== id));
+    } catch {
+      // TODO: toast error
+    }
   }
 
-  const pendingCount = deadlines.filter((d) => d.status === "pending").length;
-  const urgentCount = deadlines.filter((d) => d.status === "pending" && daysUntil(d.due_date) <= 3).length;
+  const pendingCount = deadlines.filter((d) => !d.completed).length;
+  const urgentCount = deadlines.filter((d) => !d.completed && daysUntil(d.due_date) <= 3).length;
+
+  if (loading) {
+    return (
+      <div className="flex h-64 items-center justify-center">
+        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
 
   return (
     <div className="mx-auto max-w-3xl space-y-4">
@@ -153,8 +188,8 @@ export default function DeadlinePage() {
                   </button>
                 ))}
               </div>
-              <Button size="sm" onClick={addDeadline} disabled={!newTitle || !newDate}>
-                确认添加
+              <Button size="sm" onClick={addDeadline} disabled={!newTitle || !newDate || submitting}>
+                {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : "确认添加"}
               </Button>
             </div>
           </div>
@@ -199,34 +234,34 @@ export default function DeadlinePage() {
         ) : (
           filtered.map((dl) => {
             const days = daysUntil(dl.due_date);
-            const isOverdue = dl.status === "pending" && days < 0;
-            const isUrgent = dl.status === "pending" && days >= 0 && days <= 3;
+            const isOverdue = !dl.completed && days < 0;
+            const isUrgent = !dl.completed && days >= 0 && days <= 3;
             return (
               <div
                 key={dl.id}
                 className={`group flex items-center gap-3 rounded-xl bg-white p-4 shadow-sm ring-1 ring-black/[0.04] transition-all dark:bg-gray-900 dark:ring-white/[0.06] ${
-                  dl.status === "completed" ? "opacity-60" : ""
+                  dl.completed ? "opacity-60" : ""
                 }`}
               >
                 <button
-                  onClick={() => toggleStatus(dl.id)}
+                  onClick={() => toggleStatus(dl)}
                   className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full border-2 transition-all ${
-                    dl.status === "completed"
+                    dl.completed
                       ? "border-emerald-500 bg-emerald-500 text-white"
                       : "border-muted-foreground/30 hover:border-emerald-500"
                   }`}
                 >
-                  {dl.status === "completed" && <CheckCircle2 className="h-3.5 w-3.5" />}
+                  {dl.completed && <CheckCircle2 className="h-3.5 w-3.5" />}
                 </button>
 
                 <div className={`h-8 w-1 rounded-full ${PRIORITY_CONFIG[dl.priority].color}`} />
 
                 <div className="flex-1 min-w-0">
-                  <p className={`text-sm font-medium ${dl.status === "completed" ? "line-through" : ""}`}>
+                  <p className={`text-sm font-medium ${dl.completed ? "line-through" : ""}`}>
                     {dl.title}
                   </p>
                   <div className="mt-0.5 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-                    {dl.course_name && <span>{dl.course_name}</span>}
+                    {dl.course && <span>{dl.course}</span>}
                     <span className="flex items-center gap-1">
                       <Calendar className="h-3 w-3" />
                       {new Date(dl.due_date).toLocaleDateString("zh-CN", {
@@ -240,7 +275,7 @@ export default function DeadlinePage() {
                 </div>
 
                 <div className="flex items-center gap-2">
-                  {dl.status === "pending" && (
+                  {!dl.completed && (
                     <span
                       className={`flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium ${
                         isOverdue
@@ -252,15 +287,13 @@ export default function DeadlinePage() {
                     >
                       {isOverdue ? (
                         <><AlertTriangle className="h-3 w-3" />已逾期</>
-                      ) : isUrgent ? (
-                        <><Clock className="h-3 w-3" />剩{days}天</>
                       ) : (
                         <><Clock className="h-3 w-3" />剩{days}天</>
                       )}
                     </span>
                   )}
                   <button
-                    onClick={() => removeDeadline(dl.id)}
+                    onClick={() => removeDl(dl.id)}
                     className="hidden rounded-lg p-1.5 text-muted-foreground/50 transition-colors hover:bg-red-500/10 hover:text-red-500 group-hover:flex"
                   >
                     <Trash2 className="h-3.5 w-3.5" />
@@ -271,10 +304,6 @@ export default function DeadlinePage() {
           })
         )}
       </div>
-
-      <p className="text-center text-xs text-muted-foreground/50">
-        DDL 数据目前存储在本地，后续将支持云端同步与自动抓取
-      </p>
     </div>
   );
 }

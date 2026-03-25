@@ -125,6 +125,41 @@ class User(Base):
     )
 
 
+class Exam(Base):
+    """考试安排"""
+    __tablename__ = "exams"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("users.id"), nullable=False, index=True
+    )
+    course_name: Mapped[str] = mapped_column(String(200), nullable=False)
+    exam_date: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    exam_time: Mapped[str | None] = mapped_column(String(20))
+    location: Mapped[str | None] = mapped_column(String(200))
+    exam_type: Mapped[str] = mapped_column(String(50), default="期末考试")
+    notes: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+
+
+class Notification(Base):
+    """校园通知"""
+    __tablename__ = "notifications"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    title: Mapped[str] = mapped_column(String(500), nullable=False)
+    source: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
+    url: Mapped[str | None] = mapped_column(String(1000))
+    content: Mapped[str | None] = mapped_column(Text)
+    summary: Mapped[str | None] = mapped_column(Text)
+    published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    crawled_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+
+
 class Deadline(Base):
     __tablename__ = "deadlines"
 

@@ -1,7 +1,6 @@
 "use client";
 
-import { useState } from "react";
-import { Bus, ArrowRight, Clock, MapPin, Info } from "lucide-react";
+import { Bus, ArrowRight, Clock, MapPin, Info, Phone } from "lucide-react";
 
 interface BusRoute {
   id: number;
@@ -13,71 +12,73 @@ interface BusRoute {
   duration: string;
 }
 
+// 数据来源：四川大学教务处 https://jwc.scu.edu.cn/xcskb.htm
+// 周末/节假日班次官网注明"按固定班次发班，具体见周末及节假日发班时刻表"，
+// 官网未公开具体周末时刻，故暂不展示周末班次，避免误导。
 const BUS_ROUTES: BusRoute[] = [
   {
     id: 1,
-    route: "江安 → 望江",
-    from: "江安校区西门",
-    to: "望江校区北门",
-    duration: "约40分钟",
+    route: "华西 → 江安",
+    from: "华西校区",
+    to: "江安校区",
+    duration: "约50分钟",
     schedules: [
-      { time: "07:20" }, { time: "07:50" }, { time: "08:20" },
-      { time: "09:30" }, { time: "10:30" },
-      { time: "12:00" }, { time: "13:00" }, { time: "13:30" },
-      { time: "14:30" }, { time: "16:00" },
-      { time: "17:30" }, { time: "18:30" },
-      { time: "21:30", note: "末班" },
-    ],
-    weekendSchedules: [
-      { time: "08:00" }, { time: "09:30" },
-      { time: "12:00" }, { time: "14:00" },
-      { time: "17:30" }, { time: "21:00", note: "末班" },
+      { time: "07:10" }, { time: "08:00" }, { time: "09:00" },
+      { time: "10:10" }, { time: "11:10" }, { time: "12:10" },
+      { time: "13:55" }, { time: "14:45" }, { time: "15:35" },
+      { time: "16:40" }, { time: "17:30" }, { time: "17:50" },
+      { time: "18:10" }, { time: "18:25" }, { time: "19:35" },
+      { time: "20:10" }, { time: "21:20" },
+      { time: "22:15", note: "末班" },
     ],
   },
   {
     id: 2,
-    route: "望江 → 江安",
-    from: "望江校区北门",
-    to: "江安校区西门",
-    duration: "约40分钟",
+    route: "江安 → 华西",
+    from: "江安校区",
+    to: "华西校区",
+    duration: "约50分钟",
     schedules: [
-      { time: "07:20" }, { time: "07:50" },
-      { time: "09:30" }, { time: "10:30" },
-      { time: "12:00" }, { time: "13:00" }, { time: "13:30" },
-      { time: "14:30" }, { time: "16:00" },
-      { time: "17:30" }, { time: "18:30" },
-      { time: "21:30", note: "末班" },
-    ],
-    weekendSchedules: [
-      { time: "08:00" }, { time: "09:30" },
-      { time: "12:00" }, { time: "14:00" },
-      { time: "17:30" }, { time: "21:00", note: "末班" },
+      { time: "07:00", note: "滚动发班至7:30" },
+      { time: "08:05", note: "行政班" },
+      { time: "09:10" }, { time: "09:30" }, { time: "10:05" },
+      { time: "12:00" }, { time: "12:50" }, { time: "13:00" },
+      { time: "14:55" }, { time: "15:45" }, { time: "16:25" },
+      { time: "16:55" }, { time: "17:40" }, { time: "18:25" },
+      { time: "18:50" }, { time: "19:50" }, { time: "21:10" },
+      { time: "22:30", note: "末班" },
     ],
   },
   {
     id: 3,
-    route: "江安 → 华西",
-    from: "江安校区西门",
-    to: "华西校区",
-    duration: "约50分钟",
+    route: "望江 → 江安",
+    from: "望江校区",
+    to: "江安校区",
+    duration: "约40分钟",
     schedules: [
-      { time: "07:30" }, { time: "12:10" }, { time: "17:40" },
-    ],
-    weekendSchedules: [
-      { time: "08:30" }, { time: "14:00" },
+      { time: "07:15" }, { time: "08:20" },
+      { time: "12:10" }, { time: "13:00" },
+      { time: "15:00" }, { time: "15:40" },
+      { time: "16:50" }, { time: "17:30" },
+      { time: "18:50" }, { time: "19:30" },
+      { time: "20:10" },
+      { time: "22:05", note: "末班" },
     ],
   },
   {
     id: 4,
-    route: "华西 → 江安",
-    from: "华西校区",
-    to: "江安校区西门",
-    duration: "约50分钟",
+    route: "江安 → 望江",
+    from: "江安校区",
+    to: "望江校区",
+    duration: "约40分钟",
     schedules: [
-      { time: "07:30" }, { time: "12:10" }, { time: "17:40" },
-    ],
-    weekendSchedules: [
-      { time: "08:30" }, { time: "14:00" },
+      { time: "12:10" }, { time: "13:00" },
+      { time: "14:45" }, { time: "15:35" },
+      { time: "16:40" }, { time: "17:50" },
+      { time: "18:10" }, { time: "19:35" },
+      { time: "20:10" },
+      { time: "21:20" },
+      { time: "22:15", note: "末班" },
     ],
   },
 ];
@@ -96,9 +97,6 @@ function getNextBus(schedules: { time: string }[]): { time: string; minutesLeft:
 }
 
 export default function BusPage() {
-  const isWeekend = [0, 6].includes(new Date().getDay());
-  const [showWeekend, setShowWeekend] = useState(isWeekend);
-
   return (
     <div className="mx-auto max-w-3xl space-y-4">
       {/* Header */}
@@ -109,41 +107,15 @@ export default function BusPage() {
           </div>
           <div>
             <h1 className="text-xl font-bold">校车时刻</h1>
-            <p className="text-xs text-muted-foreground">校区间班车时刻表</p>
+            <p className="text-xs text-muted-foreground">校区间班车时刻表（工作日）</p>
           </div>
         </div>
-      </div>
-
-      {/* Weekday/Weekend Toggle */}
-      <div className="flex gap-1 rounded-xl bg-muted/30 p-1">
-        <button
-          onClick={() => setShowWeekend(false)}
-          className={`flex-1 rounded-lg py-1.5 text-xs font-medium transition-all ${
-            !showWeekend
-              ? "bg-white text-foreground shadow-sm dark:bg-gray-800"
-              : "text-muted-foreground hover:text-foreground"
-          }`}
-        >
-          工作日
-        </button>
-        <button
-          onClick={() => setShowWeekend(true)}
-          className={`flex-1 rounded-lg py-1.5 text-xs font-medium transition-all ${
-            showWeekend
-              ? "bg-white text-foreground shadow-sm dark:bg-gray-800"
-              : "text-muted-foreground hover:text-foreground"
-          }`}
-        >
-          周末/节假日
-        </button>
       </div>
 
       {/* Route Cards */}
       <div className="space-y-3">
         {BUS_ROUTES.map((route) => {
-          const schedules = showWeekend
-            ? route.weekendSchedules || route.schedules
-            : route.schedules;
+          const schedules = route.schedules;
           const next = getNextBus(schedules);
 
           return (
@@ -211,12 +183,33 @@ export default function BusPage() {
       </div>
 
       {/* Info */}
-      <div className="flex items-start gap-2 rounded-xl bg-cyan-500/5 p-3 text-xs text-muted-foreground ring-1 ring-cyan-500/10">
-        <Info className="mt-0.5 h-3.5 w-3.5 shrink-0 text-cyan-500" />
-        <p>
-          校车时刻仅供参考，实际运行可能因天气、节假日等因素调整。
-          建议提前5-10分钟到达乘车点。发车地点如有变动以现场通知为准。
-        </p>
+      <div className="space-y-2">
+        <div className="flex items-start gap-2 rounded-xl bg-cyan-500/5 p-3 text-xs text-muted-foreground ring-1 ring-cyan-500/10">
+          <Info className="mt-0.5 h-3.5 w-3.5 shrink-0 text-cyan-500" />
+          <div className="space-y-1">
+            <p>
+              以上为工作日固定班车发车时间，其余时间由调度根据实际情况临时安排。
+              周末及节假日按固定班次发班，请以现场通知为准。
+            </p>
+            <p>
+              数据来源：
+              <a
+                href="https://jwc.scu.edu.cn/xcskb.htm"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-cyan-600 underline underline-offset-2 dark:text-cyan-400"
+              >
+                四川大学教务处
+              </a>
+            </p>
+          </div>
+        </div>
+        <div className="flex items-start gap-2 rounded-xl bg-muted/20 p-3 text-xs text-muted-foreground ring-1 ring-black/[0.04] dark:ring-white/[0.06]">
+          <Phone className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+          <p>
+            车队总调度 85412179 · 望江点 85471138 · 华西点 85415183 · 江安点 18980697556 · 后勤监督 85405680
+          </p>
+        </div>
       </div>
     </div>
   );

@@ -1,0 +1,282 @@
+# SCU Assistant — 四川大学智能校园助手
+
+基于 **Next.js 16 + FastAPI** 的全栈校园生活助手，为四川大学学生提供课表查询、成绩查看、AI 智能问答、校园通知、天气穿衣建议等一站式服务。
+
+## 功能模块
+
+| 模块 | 说明 |
+|------|------|
+| **教务数据** | 对接四川大学教务系统 (zhjw.scu.edu.cn)，登录后自动抓取课表、成绩、培养方案完成度并缓存 |
+| **AI 对话** | 基于 Anthropic Claude API 的智能助手"小川"，支持 Tool Use 自动调用课表/成绩/DDL 等工具 |
+| **RAG 文档问答** | 上传 PDF/PPT 文档，基于 ChromaDB 向量检索 + LLM 生成回答 |
+| **智能出题** | AI 根据上传文档自动生成练习题 |
+| **复习计划** | AI 生成个性化复习计划 |
+| **校园通知** | 教务处、学工部、研究生院通知聚合展示 |
+| **DDL 管理** | 作业/考试截止日期管理与提醒 |
+| **天气穿衣** | 基于和风天气 API 的实时天气 + 多维穿衣建议（温度/湿度/风力/天况） |
+| **校车查询** | 江安↔望江校区校车时刻表 |
+| **食堂信息** | 各校区食堂营业状态与推荐 |
+| **每日简报** | 聚合今日课表、天气、DDL 等信息的首页仪表盘 |
+
+## 技术栈
+
+### 前端
+- **Next.js 16** (App Router) + **React 19** + **TypeScript**
+- **Tailwind CSS v4** + shadcn/ui 组件
+- **Zustand** 状态管理（auth 持久化至 localStorage，chat 持久化至 sessionStorage）
+- **Axios** HTTP 客户端 + **React Query**
+
+### 后端
+- **FastAPI** + **Uvicorn** (ASGI)
+- **SQLAlchemy 2.0** (async) + **PostgreSQL 16** + **Alembic** 数据库迁移
+- **Redis 7** 会话缓存 + 天气缓存
+- **httpx** 异步 HTTP 客户端（教务系统爬虫）
+- **ChromaDB** 向量数据库（RAG 文档检索）
+- **Anthropic Claude API** (Tool Use)
+
+### 基础设施
+- **Docker Compose** 一键启动 PostgreSQL + Redis
+- 支持 `.env` 环境变量配置
+
+## 项目结构
+
+```
+SCU_Assistant/
+├── frontend/                   # Next.js 前端
+│   ├── src/
+│   │   ├── app/(main)/         # 主布局下的各页面
+│   │   │   ├── page.tsx        # 首页仪表盘
+│   │   │   ├── chat/           # AI 对话
+│   │   │   ├── academic/       # 课表、成绩、DDL、考试、RAG
+│   │   │   ├── campus/         # 校车、校历
+│   │   │   ├── food/           # 食堂
+│   │   │   ├── weather/        # 天气穿衣
+│   │   │   ├── notification/   # 校园通知
+│   │   │   ├── dashboard/      # 每日简报
+│   │   │   └── settings/       # 设置
+│   │   ├── components/layout/  # 侧边栏、顶栏
+│   │   ├── lib/                # API 客户端封装
+│   │   └── stores/             # Zustand 状态管理
+│   └── package.json
+├── backend/                    # FastAPI 后端
+│   ├── gateway/                # 网关层（入口、认证、中间件）
+│   │   ├── main.py             # FastAPI 应用入口
+│   │   ├── auth/router.py      # 登录/注册/刷新 Token
+│   │   └── middleware/         # CORS 等中间件
+│   ├── services/               # 业务服务层
+│   │   ├── academic/           # 教务数据（课表、成绩、培养方案）
+│   │   ├── chat/               # AI 对话 + Tool Use
+│   │   ├── rag/                # RAG 文档问答
+│   │   ├── quiz/               # 智能出题
+│   │   ├── studyplan/          # 复习计划
+│   │   ├── deadline/           # DDL 管理
+│   │   ├── notification/       # 校园通知
+│   │   ├── weather/            # 天气服务
+│   │   ├── briefing/           # 每日简报
+│   │   └── memory/             # 用户记忆（AI 个性化）
+│   ├── shared/                 # 公共模块（config, models, database, cache）
+│   ├── alembic/                # 数据库迁移
+│   └── pyproject.toml
+├── docker-compose.yml          # PostgreSQL + Redis
+└── docs/                       # 项目文档、周报
+```
+
+## 快速开始
+
+### 前置要求
+
+- **Node.js** >= 18（推荐 20+）
+- **Python** >= 3.11
+- **Docker** 和 **Docker Compose**（用于 PostgreSQL 和 Redis）
+
+### 1. 克隆仓库
+
+```bash
+git clone https://github.com/Tom-b-w/SCU_Assistant.git
+cd SCU_Assistant
+```
+
+### 2. 启动数据库服务
+
+```bash
+docker compose up -d postgres redis
+```
+
+验证服务是否正常：
+```bash
+docker compose ps
+# postgres 和 redis 应显示 healthy
+```
+
+> **常见问题**：如果端口 5432 或 6379 被占用，检查是否有其他 PostgreSQL / Redis 实例在运行，使用 `docker ps` 排查。
+
+### 3. 配置后端
+
+```bash
+cd backend
+
+# 创建 Python 虚拟环境
+python -m venv .venv
+
+# 激活虚拟环境
+# Windows:
+.venv\Scripts\activate
+# macOS/Linux:
+source .venv/bin/activate
+
+# 安装依赖
+pip install -e ".[dev]"
+```
+
+创建 `.env` 配置文件：
+
+```bash
+cp .env.example .env  # 如果有的话，或手动创建
+```
+
+`.env` 文件内容（按需配置）：
+
+```env
+# 数据库（Docker 默认配置，通常无需修改）
+DATABASE_URL=postgresql+asyncpg://postgres:postgres@localhost:5432/scu_assistant
+REDIS_URL=redis://localhost:6379/0
+
+# JWT 密钥（生产环境请更换为随机长字符串）
+JWT_SECRET_KEY=change-me-in-production-use-a-long-random-string-here
+
+# LLM API（AI 对话功能必需）
+LLM_API_KEY=你的API密钥
+LLM_BASE_URL=https://api.anthropic.com
+LLM_MODEL=claude-sonnet-4-20250514
+
+# 教务系统（设为 false 启用真实教务系统对接）
+JWC_USE_MOCK=true
+JWC_BASE_URL=http://zhjw.scu.edu.cn
+
+# 和风天气 API（可选，不配置则使用 mock 数据）
+QWEATHER_API_KEY=
+
+# Embedding（RAG 功能需要，留空则复用 LLM 配置）
+EMBEDDING_MODEL=text-embedding-3-small
+EMBEDDING_API_KEY=
+EMBEDDING_BASE_URL=
+```
+
+执行数据库迁移：
+
+```bash
+alembic upgrade head
+```
+
+> **常见问题**：如果 `alembic upgrade head` 报连接错误，请确认 Docker 中的 PostgreSQL 容器已启动且 healthy。可以用 `docker exec -it <postgres容器名> psql -U postgres -d scu_assistant -c "SELECT 1"` 测试连接。
+
+启动后端服务：
+
+```bash
+python -m uvicorn gateway.main:app --host 0.0.0.0 --port 8000
+```
+
+验证后端运行：
+```bash
+curl http://localhost:8000/health
+# 应返回 {"status":"ok","services":{"database":"ok","redis":"ok"}}
+```
+
+> **注意**：开发时避免使用 `--reload` 参数，因为在 Windows 上可能产生多个僵尸进程导致端口占用和旧代码残留。如果遇到端口已被占用的问题，使用 `taskkill /F /IM python.exe`（Windows）或 `pkill -f uvicorn`（Linux/macOS）清理后重启。
+
+### 4. 配置前端
+
+```bash
+cd frontend
+
+# 安装依赖
+npm install
+
+# 启动开发服务器
+npm run dev
+```
+
+访问 [http://localhost:3000](http://localhost:3000) 即可使用。
+
+### 5. 一键启动（Docker Compose 全量）
+
+如果希望用 Docker 一次性启动所有服务：
+
+```bash
+docker compose up -d
+```
+
+这会启动前端（:3000）、后端（:8000）、PostgreSQL（:5432）、Redis（:6379）四个容器。
+
+## 环境变量说明
+
+| 变量 | 必需 | 默认值 | 说明 |
+|------|------|--------|------|
+| `DATABASE_URL` | 是 | `postgresql+asyncpg://postgres:postgres@localhost:5432/scu_assistant` | PostgreSQL 连接串 |
+| `REDIS_URL` | 是 | `redis://localhost:6379/0` | Redis 连接串 |
+| `JWT_SECRET_KEY` | 是 | 内置默认值 | JWT 签名密钥，**生产环境必须更换** |
+| `LLM_API_KEY` | 否 | 空 | Anthropic API Key，AI 对话需要 |
+| `LLM_AUTH_TOKEN` | 否 | 空 | 备用认证 Token（与 `LLM_API_KEY` 二选一） |
+| `LLM_BASE_URL` | 否 | `https://api3.xhub.chat` | LLM API 基础 URL |
+| `LLM_MODEL` | 否 | `claude-sonnet-4-20250514` | 使用的 LLM 模型 |
+| `JWC_USE_MOCK` | 否 | `true` | 教务系统 mock 模式开关 |
+| `JWC_BASE_URL` | 否 | `http://zhjw.scu.edu.cn` | 教务系统地址 |
+| `QWEATHER_API_KEY` | 否 | 空 | 和风天气 API Key，不配置则用 mock 天气数据 |
+| `EMBEDDING_MODEL` | 否 | `text-embedding-3-small` | Embedding 模型（RAG 功能） |
+| `EMBEDDING_API_KEY` | 否 | 空 | Embedding API Key，留空复用 LLM Key |
+
+## 已知问题与注意事项
+
+### 教务系统 (JWC) 相关
+
+1. **XUANKE_LB 负载均衡 Cookie**：四川大学教务系统使用 `XUANKE_LB` cookie 做后端服务器路由（sticky session）。登录时必须同时保存 `JSESSIONID` 和 `XUANKE_LB` 两个 cookie，否则后续请求会被分发到不同后端服务器导致会话失效、数据为空。本项目已将 session 存储格式改为 JSON (`{"session": "xxx", "lb": "yyy"}`) 以携带两个 cookie。
+
+2. **登录重定向检测**：教务系统在会话过期时会重定向到 `/gotoLogin`（注意大写 L），代码中已使用大小写不敏感匹配来检测登录过期。
+
+3. **Mock 模式**：设置 `JWC_USE_MOCK=true` 时使用内置 mock 数据，无需连接真实教务系统，适用于开发和演示。
+
+### AI 对话相关
+
+4. **LLM 未配置**：如果未设置 `LLM_API_KEY` 或 `LLM_AUTH_TOKEN`，AI 对话会返回友好提示"AI 对话功能尚未配置"，不会报错。
+
+5. **Tool Use 条件**：AI 工具调用（查课表、查成绩等）需要用户已登录且有有效的教务系统 session，否则 AI 只提供通用对话能力。
+
+### 前端相关
+
+6. **登录状态持久化**：使用 Zustand `persist` 中间件将认证状态存储在 `localStorage`，刷新页面或切换路由后不会丢失登录态。
+
+7. **聊天记录持久化**：AI 对话记录存储在 `sessionStorage`（关闭浏览器标签页后清除），切换页面后对话记录不会丢失。点击"新对话"按钮可手动清除。
+
+8. **`useSearchParams` 与 SSR**：Next.js 中使用 `useSearchParams` 的组件必须包裹在 `<Suspense>` 中，否则构建时会报错。
+
+### 开发环境
+
+9. **Windows 下 `--reload` 问题**：在 Windows 上使用 `uvicorn --reload` 可能产生僵尸 Python 进程，导致端口占用和旧代码未更新。建议开发时不使用 `--reload`，手动重启；如遇问题用 `taskkill /F /IM python.exe` 清理。
+
+10. **Docker 容器依赖**：后端启动前需确保 PostgreSQL 和 Redis 容器已 healthy。可以通过 `docker compose ps` 查看状态，或用 `curl http://localhost:8000/health` 检查后端连接状态。
+
+## API 文档
+
+后端启动后访问：
+- **Swagger UI**: [http://localhost:8000/docs](http://localhost:8000/docs)
+- **ReDoc**: [http://localhost:8000/redoc](http://localhost:8000/redoc)
+
+主要 API 端点：
+
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| POST | `/api/auth/login` | 教务系统账号登录 |
+| POST | `/api/auth/refresh` | 刷新 JWT Token |
+| GET | `/api/academic/schedule` | 获取课表 |
+| GET | `/api/academic/scores` | 获取成绩 |
+| GET | `/api/academic/plan-completion` | 培养方案完成度 |
+| POST | `/api/chat` | AI 对话 |
+| GET | `/api/notifications` | 校园通知列表 |
+| GET | `/api/weather` | 天气信息 |
+| GET | `/api/deadlines` | DDL 列表 |
+| POST | `/api/rag/query` | RAG 文档问答 |
+| GET | `/api/briefing/today` | 今日简报 |
+
+## 许可证
+
+本项目仅供学习交流使用。

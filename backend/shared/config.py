@@ -31,6 +31,9 @@ class Settings(BaseSettings):
     # ChromaDB 配置
     chroma_persist_dir: str = "./data/chroma"
 
+    # 和风天气 API
+    qweather_api_key: str = ""
+
     # Rate Limiting
     rate_limit_per_minute: int = 60
     chat_rate_limit_per_minute: int = 20

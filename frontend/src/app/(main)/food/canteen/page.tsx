@@ -32,105 +32,269 @@ interface Canteen {
   windows: Window[];
 }
 
-// Static data for SCU canteens
+// 数据来源：四川大学后勤保障部、学生分享、知乎等综合信息
 const CANTEENS: Canteen[] = [
+  // ===== 江安校区 =====
   {
     id: 1,
-    name: "江安第一食堂",
+    name: "西园一餐",
     campus: "江安",
-    building: "学生活动中心旁",
+    building: "西园生活区",
     meals: {
       breakfast: { open: "07:00", close: "09:00" },
       lunch: { open: "11:00", close: "13:00" },
-      dinner: { open: "17:00", close: "19:30" },
+      dinner: { open: "17:00", close: "19:00" },
     },
     windows: [
       { name: "基本大伙", floor: 1, categories: ["川菜", "家常菜"] },
-      { name: "麻辣烫", floor: 1, categories: ["麻辣烫", "冒菜"] },
       { name: "面食窗口", floor: 1, categories: ["面条", "抄手", "饺子"] },
-      { name: "清真窗口", floor: 2, categories: ["牛肉面", "拉面", "清真"] },
-      { name: "砂锅窗口", floor: 2, categories: ["砂锅", "煲仔饭"] },
+      { name: "麻辣烫", floor: 1, categories: ["麻辣烫", "冒菜"] },
+      { name: "特色炒菜", floor: 2, categories: ["小炒", "盖饭"] },
     ],
   },
   {
     id: 2,
-    name: "江安第二食堂",
+    name: "西园二餐",
     campus: "江安",
-    building: "第二教学楼旁",
+    building: "西园生活区",
     meals: {
       breakfast: { open: "07:00", close: "09:00" },
       lunch: { open: "11:00", close: "13:00" },
-      dinner: { open: "17:00", close: "19:30" },
+      dinner: { open: "17:00", close: "19:00" },
     },
     windows: [
-      { name: "小炒窗口", floor: 1, categories: ["小炒", "川菜"] },
-      { name: "粥粉面", floor: 1, categories: ["粥", "米线", "面"] },
-      { name: "西餐简餐", floor: 2, categories: ["汉堡", "意面", "沙拉"] },
-      { name: "铁板烧", floor: 2, categories: ["铁板饭", "铁板面"] },
+      { name: "钵钵鸡", floor: 1, categories: ["钵钵鸡", "凉菜"] },
+      { name: "炒菜·炒饭炒面", floor: 1, categories: ["炒菜", "炒饭", "炒面"] },
+      { name: "菜品自选区", floor: 2, categories: ["自选", "荤素搭配"] },
+      { name: "特色瓦罐菜", floor: 2, categories: ["瓦罐", "煲汤"] },
+      { name: "抄手面饺子", floor: 2, categories: ["抄手", "面条", "饺子"] },
+      { name: "甜水面", floor: 2, categories: ["甜水面", "特色小吃"] },
     ],
   },
   {
     id: 3,
-    name: "江安第三食堂（风华餐厅）",
+    name: "西园小吃城",
     campus: "江安",
-    building: "风华苑",
+    building: "西园生活区",
     meals: {
-      lunch: { open: "11:00", close: "13:30" },
-      dinner: { open: "17:00", close: "20:00" },
+      breakfast: { open: "07:00", close: "09:00" },
+      lunch: { open: "11:00", close: "13:00" },
+      dinner: { open: "17:00", close: "23:00" },
     },
     windows: [
-      { name: "石锅拌饭", floor: 1, categories: ["韩餐", "石锅", "拌饭"] },
-      { name: "烤肉饭", floor: 1, categories: ["烤肉", "日式"] },
-      { name: "冒菜", floor: 1, categories: ["冒菜", "串串"] },
-      { name: "鸡公煲", floor: 2, categories: ["鸡公煲", "焖锅"] },
-      { name: "自选餐", floor: 2, categories: ["自选", "称重"] },
+      { name: "各类小吃", floor: 1, categories: ["烧烤", "串串", "炸鸡"] },
+      { name: "饮品甜点", floor: 1, categories: ["奶茶", "果汁", "甜品"] },
     ],
   },
   {
     id: 4,
-    name: "望江基教食堂",
-    campus: "望江",
-    building: "基础教学楼B座旁",
+    name: "西园牛肉馆",
+    campus: "江安",
+    building: "西园生活区",
     meals: {
       breakfast: { open: "07:00", close: "09:00" },
       lunch: { open: "11:00", close: "13:00" },
       dinner: { open: "17:00", close: "19:00" },
     },
     windows: [
-      { name: "大伙窗口", floor: 1, categories: ["川菜", "家常"] },
-      { name: "特色面食", floor: 1, categories: ["面条", "水饺"] },
-      { name: "麻辣香锅", floor: 2, categories: ["香锅", "麻辣"] },
+      { name: "牛肉面", floor: 1, categories: ["牛肉面", "牛杂面"] },
+      { name: "牛肉系列", floor: 1, categories: ["红烧牛肉", "牛肉粉"] },
     ],
   },
   {
     id: 5,
-    name: "望江南园食堂",
-    campus: "望江",
-    building: "南园宿舍区",
-    meals: {
-      breakfast: { open: "06:30", close: "09:00" },
-      lunch: { open: "11:00", close: "13:00" },
-      dinner: { open: "17:00", close: "19:30" },
-    },
-    windows: [
-      { name: "基本大伙", floor: 1, categories: ["家常菜", "快餐"] },
-      { name: "小吃街", floor: 1, categories: ["煎饼", "鸡蛋灌饼", "手抓饼"] },
-      { name: "瓦罐汤", floor: 2, categories: ["汤", "煲汤"] },
-    ],
-  },
-  {
-    id: 6,
-    name: "华西食堂",
-    campus: "华西",
-    building: "华西校区内",
+    name: "西园清真食堂",
+    campus: "江安",
+    building: "西园生活区",
     meals: {
       breakfast: { open: "07:00", close: "09:00" },
       lunch: { open: "11:00", close: "13:00" },
       dinner: { open: "17:00", close: "19:00" },
     },
     windows: [
-      { name: "大伙窗口", floor: 1, categories: ["川菜", "快餐"] },
-      { name: "面食窗口", floor: 1, categories: ["面条", "米线"] },
+      { name: "清真餐食", floor: 1, categories: ["清真", "牛肉面", "拉面"] },
+    ],
+  },
+  {
+    id: 6,
+    name: "馨苑美食广场",
+    campus: "江安",
+    building: "西园生活区",
+    meals: {
+      lunch: { open: "11:00", close: "13:30" },
+      dinner: { open: "16:00", close: "23:00" },
+    },
+    windows: [
+      { name: "风味小吃", floor: 1, categories: ["小吃", "烧烤", "夜宵"] },
+      { name: "特色档口", floor: 1, categories: ["冒菜", "串串", "炸物"] },
+    ],
+  },
+  {
+    id: 7,
+    name: "东园食堂（江缘餐厅）",
+    campus: "江安",
+    building: "东园·教学区/研究生区附近",
+    meals: {
+      breakfast: { open: "07:00", close: "09:00" },
+      lunch: { open: "11:00", close: "13:00" },
+      dinner: { open: "17:00", close: "21:00" },
+    },
+    windows: [
+      { name: "大众餐饮", floor: 1, categories: ["家常菜", "快餐"] },
+      { name: "特色菜品", floor: 1, categories: ["川菜", "特价菜"] },
+      { name: "风味小吃", floor: 2, categories: ["小吃", "面食", "粉"] },
+    ],
+  },
+  // ===== 望江校区 =====
+  {
+    id: 8,
+    name: "北园餐厅",
+    campus: "望江",
+    building: "西区·北园宿舍区",
+    meals: {
+      breakfast: { open: "07:00", close: "09:00" },
+      lunch: { open: "11:00", close: "13:00" },
+      dinner: { open: "17:00", close: "19:00" },
+    },
+    windows: [
+      { name: "基本大伙", floor: 1, categories: ["川菜", "家常菜"] },
+      { name: "特色菜品", floor: 2, categories: ["小炒", "盖饭"] },
+    ],
+  },
+  {
+    id: 9,
+    name: "南园食堂",
+    campus: "望江",
+    building: "西区·南园宿舍区",
+    meals: {
+      breakfast: { open: "07:00", close: "09:00" },
+      lunch: { open: "11:00", close: "13:00" },
+      dinner: { open: "17:00", close: "19:00" },
+    },
+    windows: [
+      { name: "基本大伙", floor: 1, categories: ["家常菜", "快餐"] },
+      { name: "小吃窗口", floor: 1, categories: ["小吃", "面食"] },
+    ],
+  },
+  {
+    id: 10,
+    name: "活动中心食堂",
+    campus: "望江",
+    building: "西区·学生活动中心",
+    meals: {
+      breakfast: { open: "07:00", close: "09:00" },
+      lunch: { open: "11:00", close: "13:00" },
+      dinner: { open: "17:00", close: "19:00" },
+    },
+    windows: [
+      { name: "荤素热菜", floor: 1, categories: ["热菜", "卤菜", "烧菜"] },
+      { name: "面食早点", floor: 1, categories: ["面条", "花卷", "油条"] },
+    ],
+  },
+  {
+    id: 11,
+    name: "活动中心小吃城",
+    campus: "望江",
+    building: "西区·学生活动中心旁",
+    meals: {
+      breakfast: { open: "07:00", close: "09:00" },
+      lunch: { open: "11:00", close: "13:00" },
+      dinner: { open: "17:00", close: "21:00" },
+    },
+    windows: [
+      { name: "牛肉面", floor: 1, categories: ["牛肉面", "豇豆面", "鸡杂面"] },
+      { name: "早点", floor: 1, categories: ["花卷", "油饼", "油条"] },
+      { name: "风味小吃", floor: 1, categories: ["小吃", "快餐"] },
+    ],
+  },
+  {
+    id: 12,
+    name: "东一食堂",
+    campus: "望江",
+    building: "东区",
+    meals: {
+      breakfast: { open: "07:00", close: "09:00" },
+      lunch: { open: "11:00", close: "13:00" },
+      dinner: { open: "17:00", close: "19:00" },
+    },
+    windows: [
+      { name: "基本大伙", floor: 1, categories: ["川菜", "家常菜"] },
+      { name: "特色窗口", floor: 1, categories: ["盖饭", "套餐"] },
+    ],
+  },
+  {
+    id: 13,
+    name: "桃园餐厅",
+    campus: "望江",
+    building: "东区·桃园",
+    meals: {
+      breakfast: { open: "07:00", close: "09:00" },
+      lunch: { open: "11:00", close: "13:00" },
+      dinner: { open: "17:00", close: "19:00" },
+    },
+    windows: [
+      { name: "自选菜品", floor: 1, categories: ["自选", "凉菜", "卤菜"] },
+      { name: "炒菜汤菜", floor: 1, categories: ["炒菜", "汤菜"] },
+    ],
+  },
+  {
+    id: 14,
+    name: "桃园面馆",
+    campus: "望江",
+    building: "东区·桃园餐厅旁",
+    meals: {
+      lunch: { open: "08:00", close: "13:00" },
+      dinner: { open: "17:00", close: "19:30" },
+    },
+    windows: [
+      { name: "各类面食", floor: 1, categories: ["面条", "米线", "抄手"] },
+    ],
+  },
+  {
+    id: 15,
+    name: "东园餐厅",
+    campus: "望江",
+    building: "东区",
+    meals: {
+      breakfast: { open: "07:00", close: "09:00" },
+      lunch: { open: "11:00", close: "13:00" },
+      dinner: { open: "17:00", close: "19:00" },
+    },
+    windows: [
+      { name: "辣子鸡·特色菜", floor: 1, categories: ["辣子鸡", "山药鸡"] },
+      { name: "汤品", floor: 1, categories: ["番茄汤", "海带猪蹄汤"] },
+    ],
+  },
+  // ===== 华西校区 =====
+  {
+    id: 16,
+    name: "华西食堂",
+    campus: "华西",
+    building: "华西校区",
+    meals: {
+      breakfast: { open: "07:00", close: "09:00" },
+      lunch: { open: "11:00", close: "13:00" },
+      dinner: { open: "17:00", close: "19:00" },
+    },
+    windows: [
+      { name: "基本大伙", floor: 1, categories: ["川菜", "快餐"] },
+      { name: "小自助", floor: 2, categories: ["自助", "自选"] },
+      { name: "小炒·铁板烧", floor: 2, categories: ["小炒", "铁板烧"] },
+      { name: "冒菜·面食", floor: 2, categories: ["冒菜", "面条", "米线"] },
+    ],
+  },
+  {
+    id: 17,
+    name: "华西东苑小吃城",
+    campus: "华西",
+    building: "华西校区·东苑",
+    meals: {
+      breakfast: { open: "07:00", close: "09:00" },
+      lunch: { open: "11:00", close: "13:00" },
+      dinner: { open: "17:00", close: "21:00" },
+    },
+    windows: [
+      { name: "风味小吃", floor: 1, categories: ["小吃", "烧烤", "炸物"] },
     ],
   },
 ];
@@ -319,7 +483,7 @@ export default function CanteenPage() {
       </div>
 
       <p className="text-center text-xs text-muted-foreground/50">
-        食堂数据为静态信息，营业时间可能因节假日调整
+        数据综合自后勤保障部及学生分享，窗口档口可能随学期调整，营业时间因节假日可能变化
       </p>
     </div>
   );

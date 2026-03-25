@@ -1,10 +1,11 @@
 import base64
 
-from fastapi import APIRouter, Depends, Request, Response
+from fastapi import APIRouter, BackgroundTasks, Depends, Request, Response
 
 from gateway.auth.dependencies import get_auth_service, get_current_user
 from gateway.auth.schemas import CaptchaResponse, LoginRequest, TokenResponse, UserResponse
 from gateway.auth.service import AuthService
+from services.academic.cache_service import fetch_and_cache_all
 from services.academic.jwc_client import get_jwc_client
 from shared.cache import redis_client
 from shared.config import settings
@@ -26,6 +27,7 @@ async def get_captcha():
 async def login(
     body: LoginRequest,
     response: Response,
+    background_tasks: BackgroundTasks,
     auth_service: AuthService = Depends(get_auth_service),
 ):
     jwc = get_jwc_client(redis_client=redis_client)
@@ -59,6 +61,9 @@ async def login(
         samesite="lax",
         max_age=settings.jwt_refresh_token_expire_days * 86400,
     )
+
+    # 登录成功后，后台立即抓取教务数据并缓存到数据库
+    background_tasks.add_task(fetch_and_cache_all, user.id, user.student_id)
 
     return TokenResponse(
         access_token=access_token,

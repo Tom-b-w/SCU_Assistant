@@ -1,3 +1,14 @@
+import logging
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(name)s %(levelname)s %(message)s",
+    handlers=[
+        logging.StreamHandler(),
+        logging.FileHandler("app.log", mode="w", encoding="utf-8"),
+    ],
+)
+
 from fastapi import FastAPI
 from sqlalchemy import text
 
@@ -12,6 +23,9 @@ from services.deadline.router import router as deadline_router
 from services.rag.router import router as rag_router
 from services.quiz.router import router as quiz_router
 from services.studyplan.router import router as studyplan_router
+from services.weather.router import router as weather_router
+from services.notification.router import router as notification_router
+from services.briefing.router import router as briefing_router
 
 
 def create_app() -> FastAPI:
@@ -31,6 +45,20 @@ def create_app() -> FastAPI:
     app.include_router(rag_router)
     app.include_router(quiz_router)
     app.include_router(studyplan_router)
+    app.include_router(weather_router)
+    app.include_router(notification_router)
+    app.include_router(briefing_router)
+
+    @app.on_event("startup")
+    async def seed_data():
+        """应用启动时 seed 通知等数据"""
+        from shared.database import async_session
+        from services.notification.crawler import seed_notifications
+        try:
+            async with async_session() as session:
+                await seed_notifications(session)
+        except Exception as e:
+            logging.getLogger(__name__).warning("Seed 通知数据失败: %s", e)
 
     @app.get("/health")
     async def health_check():

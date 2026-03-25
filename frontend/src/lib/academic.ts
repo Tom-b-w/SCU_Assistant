@@ -9,6 +9,9 @@ export interface Course {
   location: string;
   weeks: string;
   course_type: string;
+  campus?: string;
+  building?: string;
+  is_scheduled: boolean;
 }
 
 export interface Score {

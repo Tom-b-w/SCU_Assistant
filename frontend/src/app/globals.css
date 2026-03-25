@@ -151,6 +151,16 @@
   100% { background-position: 0% 50%; }
 }
 
+@keyframes pulse-glow {
+  0%, 100% { opacity: 0.4; }
+  50% { opacity: 0.8; }
+}
+
+@keyframes slide-up {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
 .animate-float {
   animation: float 6s ease-in-out infinite;
 }
@@ -163,4 +173,51 @@
 .animate-gradient {
   background-size: 200% 200%;
   animation: gradient-shift 8s ease infinite;
+}
+
+.animate-pulse-glow {
+  animation: pulse-glow 3s ease-in-out infinite;
+}
+
+.animate-slide-up {
+  animation: slide-up 0.4s ease-out;
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: oklch(0.7 0 0 / 20%);
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: oklch(0.5 0 0 / 30%);
+}
+
+.dark ::-webkit-scrollbar-thumb {
+  background: oklch(1 0 0 / 15%);
+}
+
+.dark ::-webkit-scrollbar-thumb:hover {
+  background: oklch(1 0 0 / 25%);
+}
+
+/* Glass card effect */
+.glass-card {
+  background: oklch(1 0 0 / 70%);
+  backdrop-filter: blur(12px);
+  border: 1px solid oklch(0 0 0 / 4%);
+}
+
+.dark .glass-card {
+  background: oklch(0.17 0.005 247 / 70%);
+  border: 1px solid oklch(1 0 0 / 6%);
 }

@@ -32,6 +32,17 @@ const SECTION_COLORS = [
   "bg-pink-500", "bg-cyan-500", "bg-amber-500", "bg-indigo-500",
 ];
 
+const COURSE_ACCENT_GRADIENTS = [
+  "from-blue-400 to-blue-600",
+  "from-emerald-400 to-emerald-600",
+  "from-purple-400 to-purple-600",
+  "from-orange-400 to-orange-600",
+  "from-pink-400 to-pink-600",
+  "from-cyan-400 to-cyan-600",
+  "from-amber-400 to-amber-600",
+  "from-indigo-400 to-indigo-600",
+];
+
 function sectionToTime(section: number): string {
   const map: Record<number, string> = {
     1: "08:00", 2: "08:55", 3: "10:10", 4: "11:05",
@@ -39,6 +50,15 @@ function sectionToTime(section: number): string {
     9: "19:00", 10: "19:55", 11: "20:50",
   };
   return map[section] || `第${section}节`;
+}
+
+function getScoreBadge(score: string) {
+  const num = parseFloat(score);
+  if (isNaN(num)) return { bg: "bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400", label: score };
+  if (num >= 90) return { bg: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400", label: score };
+  if (num >= 80) return { bg: "bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-400", label: score };
+  if (num >= 60) return { bg: "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-400", label: score };
+  return { bg: "bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-400", label: score };
 }
 
 export default function DashboardPage() {
@@ -109,10 +129,10 @@ export default function DashboardPage() {
       : `${totalCredits}`;
 
   const quickStats = [
-    { label: "今日课程", value: loading ? "..." : `${todayCourses.length}节`, icon: CalendarDays, color: "from-blue-500 to-blue-600", href: "/academic/schedule" },
-    { label: "已修学分", value: earnedCreditsDisplay, icon: Award, color: "from-orange-500 to-red-500", href: "/academic/scores" },
-    { label: "加权均分", value: loading ? "..." : avgScore, icon: TrendingUp, color: "from-emerald-500 to-green-600", href: "/academic/scores" },
-    { label: "平均绩点", value: loading ? "..." : avgGpa, icon: GraduationCap, color: "from-cyan-500 to-blue-500", href: "/academic/scores" },
+    { label: "今日课程", value: loading ? "..." : `${todayCourses.length}节`, icon: CalendarDays, color: "from-blue-500 to-blue-600", iconBg: "from-blue-400 via-blue-500 to-indigo-500", shadowColor: "shadow-blue-500/20", href: "/academic/schedule" },
+    { label: "已修学分", value: earnedCreditsDisplay, icon: Award, color: "from-orange-500 to-red-500", iconBg: "from-orange-400 via-red-400 to-rose-500", shadowColor: "shadow-orange-500/20", href: "/academic/scores" },
+    { label: "加权均分", value: loading ? "..." : avgScore, icon: TrendingUp, color: "from-emerald-500 to-green-600", iconBg: "from-emerald-400 via-green-500 to-teal-500", shadowColor: "shadow-emerald-500/20", href: "/academic/scores" },
+    { label: "平均绩点", value: loading ? "..." : avgGpa, icon: GraduationCap, color: "from-cyan-500 to-blue-500", iconBg: "from-cyan-400 via-sky-500 to-blue-500", shadowColor: "shadow-cyan-500/20", href: "/academic/scores" },
   ];
 
   const firstCourseInfo = todayCourses.length > 0
@@ -121,8 +141,17 @@ export default function DashboardPage() {
 
   return (
     <div className="mx-auto max-w-6xl space-y-6">
-      {/* Welcome Section */}
-      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-[#C41230] to-[#E8173A] p-6 text-white shadow-lg shadow-[#C41230]/20 md:p-8">
+      {/* Welcome Section - animated gradient with mesh overlay */}
+      <div className="animate-gradient relative overflow-hidden rounded-2xl bg-gradient-to-br from-[#C41230] via-[#E8173A] to-[#9E0E26] p-6 text-white shadow-lg shadow-[#C41230]/20 md:p-8">
+        {/* Mesh grid pattern overlay */}
+        <div
+          className="pointer-events-none absolute inset-0 opacity-[0.07]"
+          style={{
+            backgroundImage:
+              "linear-gradient(rgba(255,255,255,0.3) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.3) 1px, transparent 1px)",
+            backgroundSize: "40px 40px",
+          }}
+        />
         <div className="relative z-10">
           <div className="flex items-center gap-2 text-white/70">
             <CloudSun className="h-4 w-4" />
@@ -136,18 +165,20 @@ export default function DashboardPage() {
           </p>
           <Link
             href="/chat"
-            className="mt-4 inline-flex items-center gap-2 rounded-xl bg-white/15 px-4 py-2 text-sm font-medium backdrop-blur-sm transition-all hover:bg-white/25"
+            className="mt-4 inline-flex items-center gap-2 rounded-xl bg-white/15 px-4 py-2 text-sm font-medium backdrop-blur-sm transition-all hover:bg-white/25 hover:scale-[1.02] active:scale-[0.98]"
           >
             <Sparkles className="h-4 w-4" />
             问 AI：今天我需要注意什么？
           </Link>
         </div>
+        {/* Decorative blurred circles */}
         <div className="absolute -right-10 -top-10 h-40 w-40 rounded-full bg-white/10 blur-2xl" />
         <div className="absolute -bottom-5 right-20 h-24 w-24 rounded-full bg-[#D4A843]/20 blur-xl" />
+        <div className="absolute -left-8 bottom-0 h-32 w-32 rounded-full bg-white/5 blur-2xl" />
         <GraduationCap className="absolute right-6 top-6 h-20 w-20 text-white/10 md:h-28 md:w-28" />
       </div>
 
-      {/* Quick Stats */}
+      {/* Quick Stats - gradient icon backgrounds with hover animations */}
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4 md:gap-4">
         {quickStats.map((stat) => {
           const Icon = stat.icon;
@@ -155,14 +186,16 @@ export default function DashboardPage() {
             <Link
               key={stat.label}
               href={stat.href}
-              className="group relative overflow-hidden rounded-xl bg-white p-4 shadow-sm ring-1 ring-black/[0.04] transition-all hover:-translate-y-0.5 hover:shadow-md dark:bg-gray-900 dark:ring-white/[0.06]"
+              className={`group relative overflow-hidden rounded-xl bg-white p-4 shadow-sm ring-1 ring-black/[0.04] transition-all duration-300 hover:-translate-y-1 hover:shadow-lg hover:shadow-black/5 dark:bg-gray-900 dark:ring-white/[0.06] dark:hover:shadow-black/20`}
             >
-              <div className={`inline-flex rounded-lg bg-gradient-to-br ${stat.color} p-2.5 text-white shadow-sm`}>
+              {/* Subtle background glow on hover */}
+              <div className={`absolute -right-4 -top-4 h-20 w-20 rounded-full bg-gradient-to-br ${stat.color} opacity-0 blur-2xl transition-opacity duration-300 group-hover:opacity-10`} />
+              <div className={`relative inline-flex rounded-xl bg-gradient-to-br ${stat.iconBg} p-2.5 text-white shadow-md ${stat.shadowColor} transition-transform duration-300 group-hover:scale-110`}>
                 <Icon className="h-4 w-4" />
               </div>
               <p className="mt-3 text-2xl font-bold tracking-tight">{stat.value}</p>
               <p className="text-xs text-muted-foreground">{stat.label}</p>
-              <ArrowRight className="absolute bottom-4 right-4 h-4 w-4 text-muted-foreground/30 transition-all group-hover:translate-x-0.5 group-hover:text-muted-foreground/60" />
+              <ArrowRight className="absolute bottom-4 right-4 h-4 w-4 text-muted-foreground/30 transition-all duration-300 group-hover:translate-x-1 group-hover:text-muted-foreground/60" />
             </Link>
           );
         })}
@@ -181,7 +214,7 @@ export default function DashboardPage() {
         <div className="rounded-xl bg-white p-5 shadow-sm ring-1 ring-black/[0.04] dark:bg-gray-900 dark:ring-white/[0.06]">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-500/10">
+              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-blue-500/20 to-indigo-500/10">
                 <CalendarDays className="h-4 w-4 text-blue-500" />
               </div>
               <h3 className="font-semibold">今日课程</h3>
@@ -190,32 +223,36 @@ export default function DashboardPage() {
               完整课表
             </Link>
           </div>
-          <div className="mt-4 space-y-3">
+          <div className="mt-4 space-y-2">
             {loading ? (
               <div className="flex items-center justify-center py-8 text-muted-foreground">
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                 正在从教务系统获取...
               </div>
             ) : todayCourses.length === 0 ? (
-              <div className="py-8 text-center text-sm text-muted-foreground">
-                今天没有课程
+              <div className="flex flex-col items-center justify-center py-10 text-center">
+                <div className="mb-3 flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-emerald-50 to-green-50 dark:from-emerald-900/20 dark:to-green-900/20">
+                  <CalendarDays className="h-7 w-7 text-emerald-400" />
+                </div>
+                <p className="text-sm font-medium text-muted-foreground">今天没有课程</p>
+                <p className="mt-0.5 text-xs text-muted-foreground/60">好好享受自由时光吧</p>
               </div>
             ) : (
               todayCourses
                 .sort((a, b) => a.start_section - b.start_section)
                 .map((item, i) => (
-                  <div key={i} className="flex items-center gap-3 rounded-lg bg-muted/30 p-3 transition-colors hover:bg-muted/50">
-                    <div className={`h-10 w-1 rounded-full ${SECTION_COLORS[i % SECTION_COLORS.length]}`} />
+                  <div key={i} className="group flex items-center gap-3 rounded-xl border border-transparent bg-muted/30 p-3 transition-all duration-200 hover:border-black/[0.04] hover:bg-muted/50 hover:shadow-sm dark:hover:border-white/[0.06]">
+                    <div className={`h-full min-h-[2.5rem] w-1.5 rounded-full bg-gradient-to-b ${COURSE_ACCENT_GRADIENTS[i % COURSE_ACCENT_GRADIENTS.length]}`} />
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-medium truncate">{item.course_name}</p>
                       <p className="text-xs text-muted-foreground">{item.location} · {item.teacher}</p>
                     </div>
-                    <div className="flex flex-col items-end text-xs text-muted-foreground">
-                      <div className="flex items-center gap-1">
+                    <div className="flex flex-col items-end gap-0.5 text-xs text-muted-foreground">
+                      <div className="flex items-center gap-1 font-medium text-foreground/70">
                         <Clock className="h-3 w-3" />
                         {sectionToTime(item.start_section)}
                       </div>
-                      <span>第{item.start_section}-{item.end_section}节</span>
+                      <span className="text-[0.65rem]">第{item.start_section}-{item.end_section}节</span>
                     </div>
                   </div>
                 ))
@@ -227,13 +264,13 @@ export default function DashboardPage() {
         <div className="rounded-xl bg-white p-5 shadow-sm ring-1 ring-black/[0.04] dark:bg-gray-900 dark:ring-white/[0.06]">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-500/10">
+              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-emerald-500/20 to-teal-500/10">
                 <Target className="h-4 w-4 text-emerald-500" />
               </div>
               <h3 className="font-semibold">已修学分统计</h3>
             </div>
             {hasRequiredCredits && (
-              <span className="text-xs text-muted-foreground">{creditProgress}%</span>
+              <span className="rounded-full bg-emerald-100 px-2.5 py-0.5 text-xs font-semibold text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400">{creditProgress}%</span>
             )}
           </div>
           <div className="mt-4">
@@ -246,18 +283,18 @@ export default function DashboardPage() {
               <div className="space-y-4">
                 {/* 总学分 */}
                 <div>
-                  <div className="flex justify-between text-sm mb-1">
+                  <div className="flex justify-between text-sm mb-2">
                     <span className="text-muted-foreground">已修总学分</span>
-                    <span className="font-medium">
+                    <span className="font-semibold">
                       {planCompletion.earned_credits}
                       {hasRequiredCredits ? ` / ${planCompletion.total_required_credits}` : " 学分"}
                     </span>
                   </div>
                   {hasRequiredCredits && (
-                    <div className="h-3 w-full rounded-full bg-muted/50 overflow-hidden">
+                    <div className="relative h-3.5 w-full rounded-full bg-muted/50 overflow-hidden">
                       <div
-                        className="h-full rounded-full bg-gradient-to-r from-emerald-500 to-green-500 transition-all duration-500"
-                        style={{ width: `${creditProgress}%` }}
+                        className="h-full rounded-full bg-gradient-to-r from-emerald-400 via-green-500 to-teal-500 transition-all duration-700 ease-out"
+                        style={{ width: `${creditProgress}%`, boxShadow: "0 0 12px rgba(16, 185, 129, 0.4)" }}
                       />
                     </div>
                   )}
@@ -265,12 +302,19 @@ export default function DashboardPage() {
 
                 {/* 分类统计 */}
                 {planCompletion.categories.map((cat, i) => {
-                  const barColors = [
-                    "from-blue-400 to-blue-500",
-                    "from-purple-400 to-purple-500",
-                    "from-orange-400 to-orange-500",
-                    "from-pink-400 to-pink-500",
-                    "from-cyan-400 to-cyan-500",
+                  const barGradients = [
+                    "from-blue-400 via-blue-500 to-indigo-500",
+                    "from-purple-400 via-violet-500 to-purple-600",
+                    "from-orange-400 via-amber-500 to-orange-500",
+                    "from-pink-400 via-rose-500 to-pink-600",
+                    "from-cyan-400 via-teal-500 to-cyan-600",
+                  ];
+                  const barShadows = [
+                    "rgba(59, 130, 246, 0.3)",
+                    "rgba(139, 92, 246, 0.3)",
+                    "rgba(249, 115, 22, 0.3)",
+                    "rgba(236, 72, 153, 0.3)",
+                    "rgba(6, 182, 212, 0.3)",
                   ];
                   // 无要求学分时，用占总学分的比例来展示柱状条
                   const barWidth = planCompletion.earned_credits > 0
@@ -278,14 +322,17 @@ export default function DashboardPage() {
                     : 0;
                   return (
                     <div key={i}>
-                      <div className="flex justify-between text-xs mb-1">
+                      <div className="flex justify-between text-xs mb-1.5">
                         <span className="text-muted-foreground">{cat.name}</span>
-                        <span className="font-medium">{cat.earned_credits} 学分</span>
+                        <span className="font-semibold">{cat.earned_credits} 学分</span>
                       </div>
-                      <div className="h-2 w-full rounded-full bg-muted/50 overflow-hidden">
+                      <div className="relative h-2.5 w-full rounded-full bg-muted/50 overflow-hidden">
                         <div
-                          className={`h-full rounded-full bg-gradient-to-r ${barColors[i % barColors.length]} transition-all duration-500`}
-                          style={{ width: `${barWidth}%` }}
+                          className={`h-full rounded-full bg-gradient-to-r ${barGradients[i % barGradients.length]} transition-all duration-700 ease-out`}
+                          style={{
+                            width: `${barWidth}%`,
+                            boxShadow: `0 0 8px ${barShadows[i % barShadows.length]}`,
+                          }}
                         />
                       </div>
                     </div>
@@ -305,12 +352,12 @@ export default function DashboardPage() {
       <div className="rounded-xl bg-white p-5 shadow-sm ring-1 ring-black/[0.04] dark:bg-gray-900 dark:ring-white/[0.06]">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-orange-500/10">
+            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-orange-500/20 to-amber-500/10">
               <BookOpen className="h-4 w-4 text-orange-500" />
             </div>
             <h3 className="font-semibold">成绩列表</h3>
             {!loading && scores.length > 0 && (
-              <span className="text-xs text-muted-foreground">共 {scores.length} 门</span>
+              <span className="rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground">共 {scores.length} 门</span>
             )}
           </div>
         </div>
@@ -325,9 +372,9 @@ export default function DashboardPage() {
               暂无成绩数据
             </div>
           ) : (
-            <div className="space-y-2">
+            <div className="space-y-0.5">
               {/* 表头 */}
-              <div className="grid grid-cols-12 gap-2 px-3 py-2 text-xs font-medium text-muted-foreground">
+              <div className="grid grid-cols-12 gap-2 rounded-lg bg-muted/60 px-3 py-2.5 text-xs font-semibold text-muted-foreground dark:bg-muted/30">
                 <span className="col-span-4">课程名称</span>
                 <span className="col-span-2">学期</span>
                 <span className="col-span-2 text-center">类型</span>
@@ -336,24 +383,27 @@ export default function DashboardPage() {
                 <span className="col-span-2 text-right">成绩</span>
               </div>
               {scores.map((item, i) => {
-                const scoreNum = parseFloat(item.score);
+                const badge = getScoreBadge(item.score);
                 return (
-                  <div key={i} className="grid grid-cols-12 gap-2 items-center rounded-lg bg-muted/30 px-3 py-2.5 transition-colors hover:bg-muted/50">
+                  <div
+                    key={i}
+                    className={`grid grid-cols-12 gap-2 items-center rounded-lg px-3 py-2.5 transition-colors hover:bg-muted/50 ${
+                      i % 2 === 0 ? "bg-transparent" : "bg-muted/20 dark:bg-muted/10"
+                    }`}
+                  >
                     <div className="col-span-4 flex items-center gap-2 min-w-0">
-                      <div className={`h-2 w-2 shrink-0 rounded-full ${scoreNum >= 60 || isNaN(scoreNum) ? "bg-emerald-500" : "bg-red-500"}`} />
+                      <div className={`h-2 w-2 shrink-0 rounded-full ${parseFloat(item.score) >= 60 || isNaN(parseFloat(item.score)) ? "bg-emerald-500" : "bg-red-500"}`} />
                       <span className="text-sm font-medium truncate">{item.course_name}</span>
                     </div>
                     <span className="col-span-2 text-xs text-muted-foreground truncate">{item.semester}</span>
                     <span className="col-span-2 text-center text-xs text-muted-foreground">{item.course_type}</span>
                     <span className="col-span-1 text-center text-xs">{item.credit}</span>
                     <span className="col-span-1 text-center text-xs">{item.gpa}</span>
-                    <span className={`col-span-2 text-right text-sm font-semibold ${
-                      scoreNum >= 90 ? "text-emerald-600 dark:text-emerald-400" :
-                      scoreNum >= 60 || isNaN(scoreNum) ? "text-foreground" :
-                      "text-red-500"
-                    }`}>
-                      {item.score}
-                    </span>
+                    <div className="col-span-2 flex justify-end">
+                      <span className={`inline-flex items-center rounded-md px-2 py-0.5 text-xs font-semibold ${badge.bg}`}>
+                        {badge.label}
+                      </span>
+                    </div>
                   </div>
                 );
               })}
@@ -362,12 +412,14 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {/* AI Suggestion Banner */}
+      {/* AI Suggestion Banner - with animated glow border */}
       <Link
         href="/chat"
-        className="group flex items-center gap-4 rounded-xl bg-gradient-to-r from-purple-500/5 via-blue-500/5 to-cyan-500/5 p-5 ring-1 ring-purple-500/10 transition-all hover:from-purple-500/10 hover:via-blue-500/10 hover:to-cyan-500/10 hover:shadow-sm"
+        className="animate-gradient group relative flex items-center gap-4 overflow-hidden rounded-xl bg-gradient-to-r from-purple-500/5 via-blue-500/5 to-cyan-500/5 p-5 ring-1 ring-purple-500/20 transition-all duration-300 hover:from-purple-500/10 hover:via-blue-500/10 hover:to-cyan-500/10 hover:shadow-lg hover:shadow-purple-500/10 hover:ring-purple-500/30"
       >
-        <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-purple-500 to-blue-500 text-white shadow-md shadow-purple-500/20">
+        {/* Animated glow effect behind the card */}
+        <div className="animate-gradient pointer-events-none absolute inset-0 -z-10 bg-gradient-to-r from-purple-500/10 via-blue-500/10 to-cyan-500/10 opacity-0 blur-xl transition-opacity duration-500 group-hover:opacity-100" />
+        <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-purple-500 via-violet-500 to-blue-500 text-white shadow-lg shadow-purple-500/25 transition-transform duration-300 group-hover:scale-110">
           <Sparkles className="h-5 w-5" />
         </div>
         <div className="flex-1 min-w-0">
@@ -376,7 +428,7 @@ export default function DashboardPage() {
             "根据你的课表和成绩分析，提供个性化学业建议"
           </p>
         </div>
-        <div className="flex items-center gap-1 text-sm text-primary">
+        <div className="flex items-center gap-1 text-sm font-medium text-primary transition-transform duration-300 group-hover:translate-x-1">
           <TrendingUp className="h-4 w-4" />
           <span className="hidden sm:inline">开始对话</span>
         </div>

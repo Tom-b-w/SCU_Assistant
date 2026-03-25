@@ -69,6 +69,37 @@ TOOL_DEFINITIONS_ANTHROPIC = [
             "required": [],
         },
     },
+    {
+        "name": "query_exams",
+        "description": "查询用户即将到来的考试安排，包括考试时间、地点、科目等信息",
+        "input_schema": {
+            "type": "object",
+            "properties": {},
+            "required": [],
+        },
+    },
+    {
+        "name": "generate_review_plan",
+        "description": "为用户指定的考试生成 AI 复习计划。当用户说'帮我制定复习计划'、'怎么复习'时使用。需要提供考试 ID。",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "exam_id": {"type": "integer", "description": "考试记录 ID"},
+            },
+            "required": ["exam_id"],
+        },
+    },
+    {
+        "name": "query_weather",
+        "description": "查询指定城市的实时天气和穿衣建议，默认查询成都",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "city": {"type": "string", "description": "城市名称，默认成都"},
+            },
+            "required": [],
+        },
+    },
 ]
 
 # 星期几的中文映射
@@ -99,6 +130,12 @@ async def execute_tool(
             return await _exec_search_kb(user_id, tool_args, db)
         elif tool_name == "generate_quiz":
             return await _exec_generate_quiz(user_id, tool_args, db)
+        elif tool_name == "query_exams":
+            return await _exec_query_exams(user_id, db)
+        elif tool_name == "generate_review_plan":
+            return await _exec_generate_review_plan(user_id, tool_args, db)
+        elif tool_name == "query_weather":
+            return await _exec_query_weather(tool_args)
         else:
             return json.dumps({"error": f"未知工具: {tool_name}"}, ensure_ascii=False)
     except Exception as e:
@@ -275,3 +312,53 @@ async def _exec_generate_quiz(user_id: int, tool_args: dict, db: AsyncSession) -
         tool_args.get("count", 5), "medium", "mixed",
     )
     return json.dumps(quiz, ensure_ascii=False)
+
+
+async def _exec_query_exams(user_id: int, db: AsyncSession) -> str:
+    """查询即将到来的考试"""
+    from services.academic.service import get_upcoming_exams
+
+    exams = await get_upcoming_exams(db, user_id)
+    if not exams:
+        return json.dumps({"message": "当前没有即将到来的考试"}, ensure_ascii=False)
+
+    result = {
+        "total": len(exams),
+        "exams": [
+            {
+                "id": e.id,
+                "course_name": e.course_name,
+                "exam_date": e.exam_date.strftime("%Y-%m-%d %H:%M")
+                if hasattr(e.exam_date, "strftime")
+                else str(e.exam_date),
+                "exam_time": e.exam_time or "",
+                "location": e.location or "",
+                "exam_type": e.exam_type,
+                "days_remaining": e.days_remaining,
+            }
+            for e in exams
+        ],
+    }
+    return json.dumps(result, ensure_ascii=False)
+
+
+async def _exec_generate_review_plan(
+    user_id: int, tool_args: dict, db: AsyncSession
+) -> str:
+    """为指定考试生成 AI 复习计划"""
+    from services.academic.service import generate_review_plan
+
+    exam_id = tool_args.get("exam_id")
+    if not exam_id:
+        return json.dumps({"error": "请指定考试 ID"}, ensure_ascii=False)
+
+    result = await generate_review_plan(db, user_id, exam_id)
+    return json.dumps(result, ensure_ascii=False)
+
+
+async def _exec_query_weather(tool_args: dict) -> str:
+    """查询天气"""
+    from services.weather.service import get_weather
+    city = tool_args.get("city", "成都")
+    result = await get_weather(city)
+    return json.dumps(result, ensure_ascii=False)

@@ -128,10 +128,14 @@ async def chat_completion(
         final_usage = result2["usage"]
 
         if usage and final_usage:
-            merged_usage = {
-                k: usage.get(k, 0) + final_usage.get(k, 0)
-                for k in set(list(usage.keys()) + list(final_usage.keys()))
-            }
+            all_keys = set(list(usage.keys()) + list(final_usage.keys()))
+            merged_usage = {}
+            for k in all_keys:
+                v1, v2 = usage.get(k, 0), final_usage.get(k, 0)
+                if isinstance(v1, (int, float)) and isinstance(v2, (int, float)):
+                    merged_usage[k] = v1 + v2
+                else:
+                    merged_usage[k] = v2 if v2 else v1
         else:
             merged_usage = final_usage or usage
 

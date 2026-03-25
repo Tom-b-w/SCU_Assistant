@@ -1,7 +1,9 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, Suspense } from "react";
+import { useSearchParams } from "next/navigation";
 import { useAuthStore } from "@/stores/auth-store";
+import { useChatStore, type ChatMessage as StoredMessage } from "@/stores/chat-store";
 import {
   Send,
   Sparkles,
@@ -13,13 +15,7 @@ import {
   Loader2,
   RotateCcw,
 } from "lucide-react";
-
-interface Message {
-  id: string;
-  role: "user" | "assistant";
-  content: string;
-  timestamp: Date;
-}
+import { sendChatMessage, type ChatMessage } from "@/lib/chat";
 
 const SUGGESTIONS = [
   { icon: CalendarDays, text: "今天有什么课？", color: "text-blue-500 bg-blue-500/10" },
@@ -28,61 +24,76 @@ const SUGGESTIONS = [
   { icon: Bus, text: "最近一班去望江的校车几点？", color: "text-cyan-500 bg-cyan-500/10" },
 ];
 
-// Placeholder AI responses for demo
-function generateResponse(input: string): string {
-  const lower = input.toLowerCase();
-  if (lower.includes("课") || lower.includes("课表")) {
-    return "根据你的课表数据，我来帮你查一下...\n\n目前 AI 对话功能正在开发中，完整的自然语言查询将在后续版本中支持。你可以先通过左侧「课程表」页面查看完整课表。";
-  }
-  if (lower.includes("食堂") || lower.includes("吃")) {
-    return "关于食堂的问题，我来帮你看看...\n\n目前 AI 对话功能正在开发中。你可以先通过左侧「食堂导航」页面查看各食堂的营业状态和窗口信息。";
-  }
-  if (lower.includes("绩点") || lower.includes("成绩") || lower.includes("学分")) {
-    return "关于你的成绩和绩点信息...\n\n目前 AI 对话功能正在开发中。你可以在首页仪表盘查看成绩汇总和学分进度。";
-  }
-  if (lower.includes("校车") || lower.includes("班车")) {
-    return "关于校车时刻的问题...\n\n目前 AI 对话功能正在开发中。你可以先通过左侧「校车时刻」页面查看各线路的发车时间。";
-  }
-  return "你好！我是 SCU Assistant 的 AI 助手。\n\n目前自然语言对话功能正在接入 LLM 中，完整的意图理解和多源数据查询将在后续版本上线。现在你可以通过左侧导航栏使用各项功能：\n\n- 📅 课程表：查看本学期课表\n- 📝 DDL 追踪：管理作业截止日期\n- 🍽️ 食堂导航：查看食堂信息\n- 🚌 校车时刻：查看班车时间";
+export default function ChatPage() {
+  return (
+    <Suspense>
+      <ChatPageInner />
+    </Suspense>
+  );
 }
 
-export default function ChatPage() {
+function ChatPageInner() {
   const user = useAuthStore((state) => state.user);
-  const [messages, setMessages] = useState<Message[]>([]);
+  const searchParams = useSearchParams();
+  const { messages: storedMessages, addMessage, clearMessages } = useChatStore();
   const [input, setInput] = useState("");
   const [isTyping, setIsTyping] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const initialQuerySent = useRef(false);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
+  }, [storedMessages]);
+
+  // 从搜索栏跳转过来时自动发送问题
+  useEffect(() => {
+    const q = searchParams.get("q");
+    if (q && !initialQuerySent.current) {
+      initialQuerySent.current = true;
+      sendMessage(q);
+    }
+  }, [searchParams]);
 
   async function sendMessage(text?: string) {
     const content = text || input.trim();
     if (!content || isTyping) return;
 
-    const userMsg: Message = {
+    const userMsg: StoredMessage = {
       id: Date.now().toString(),
       role: "user",
       content,
-      timestamp: new Date(),
+      timestamp: new Date().toISOString(),
     };
-    setMessages((prev) => [...prev, userMsg]);
+    addMessage(userMsg);
     setInput("");
     setIsTyping(true);
 
-    // Simulate AI response delay
-    await new Promise((r) => setTimeout(r, 800 + Math.random() * 1200));
-
-    const aiMsg: Message = {
-      id: (Date.now() + 1).toString(),
-      role: "assistant",
-      content: generateResponse(content),
-      timestamp: new Date(),
-    };
-    setMessages((prev) => [...prev, aiMsg]);
-    setIsTyping(false);
+    try {
+      const allMessages = [...storedMessages, userMsg];
+      const history: ChatMessage[] = allMessages.map((m) => ({
+        role: m.role,
+        content: m.content,
+      }));
+      const response = await sendChatMessage(history);
+      const aiMsg: StoredMessage = {
+        id: (Date.now() + 1).toString(),
+        role: "assistant",
+        content: response.reply,
+        timestamp: new Date().toISOString(),
+      };
+      addMessage(aiMsg);
+    } catch {
+      const errorMsg: StoredMessage = {
+        id: (Date.now() + 1).toString(),
+        role: "assistant",
+        content: "抱歉，发送消息时出现错误，请稍后重试。",
+        timestamp: new Date().toISOString(),
+      };
+      addMessage(errorMsg);
+    } finally {
+      setIsTyping(false);
+    }
   }
 
   function handleKeyDown(e: React.KeyboardEvent) {
@@ -96,29 +107,32 @@ export default function ChatPage() {
     <div className="mx-auto flex h-full max-w-3xl flex-col">
       {/* Messages Area */}
       <div className="flex-1 overflow-y-auto">
-        {messages.length === 0 ? (
+        {storedMessages.length === 0 ? (
           /* Empty State */
           <div className="flex h-full flex-col items-center justify-center px-4">
-            <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-purple-500 to-blue-500 shadow-lg shadow-purple-500/20">
-              <Sparkles className="h-8 w-8 text-white" />
+            <div className="relative">
+              <div className="absolute -inset-3 rounded-3xl bg-gradient-to-br from-purple-500/20 via-blue-500/20 to-cyan-500/20 blur-xl animate-pulse-glow" />
+              <div className="relative flex h-20 w-20 items-center justify-center rounded-2xl bg-gradient-to-br from-purple-500 via-blue-500 to-cyan-500 shadow-xl shadow-purple-500/25">
+                <Sparkles className="h-10 w-10 text-white" />
+              </div>
             </div>
-            <h2 className="mt-4 text-xl font-bold">嗨，{user?.name || "同学"}！</h2>
-            <p className="mt-1 text-sm text-muted-foreground">
-              我是你的智能校园助手，试试问我这些问题：
+            <h2 className="mt-6 text-2xl font-bold bg-gradient-to-r from-purple-600 via-blue-600 to-cyan-600 bg-clip-text text-transparent dark:from-purple-400 dark:via-blue-400 dark:to-cyan-400">嗨，{user?.name || "同学"}！</h2>
+            <p className="mt-2 text-sm text-muted-foreground">
+              我是你的智能校园助手小川，试试问我这些问题：
             </p>
-            <div className="mt-6 grid w-full max-w-md gap-2 sm:grid-cols-2">
+            <div className="mt-8 grid w-full max-w-md gap-3 sm:grid-cols-2">
               {SUGGESTIONS.map((s) => {
                 const Icon = s.icon;
                 return (
                   <button
                     key={s.text}
                     onClick={() => sendMessage(s.text)}
-                    className="flex items-center gap-2.5 rounded-xl bg-white p-3 text-left text-sm shadow-sm ring-1 ring-black/[0.04] transition-all hover:-translate-y-0.5 hover:shadow-md dark:bg-gray-900 dark:ring-white/[0.06]"
+                    className="group flex items-center gap-3 rounded-xl bg-white p-3.5 text-left text-sm shadow-sm ring-1 ring-black/[0.04] transition-all duration-200 hover:-translate-y-1 hover:shadow-lg dark:bg-gray-900 dark:ring-white/[0.06]"
                   >
-                    <div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${s.color}`}>
+                    <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${s.color} transition-transform duration-200 group-hover:scale-110`}>
                       <Icon className="h-4 w-4" />
                     </div>
-                    <span className="text-xs">{s.text}</span>
+                    <span className="text-xs font-medium">{s.text}</span>
                   </button>
                 );
               })}
@@ -126,17 +140,17 @@ export default function ChatPage() {
           </div>
         ) : (
           /* Message List */
-          <div className="space-y-4 py-4">
-            {messages.map((msg) => (
+          <div className="space-y-5 py-4">
+            {storedMessages.map((msg) => (
               <div
                 key={msg.id}
-                className={`flex gap-3 ${msg.role === "user" ? "flex-row-reverse" : ""}`}
+                className={`flex gap-3 animate-slide-up ${msg.role === "user" ? "flex-row-reverse" : ""}`}
               >
                 <div
-                  className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${
+                  className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-xl shadow-sm ${
                     msg.role === "user"
-                      ? "bg-gradient-to-br from-[#C41230] to-[#E8173A] text-white"
-                      : "bg-gradient-to-br from-purple-500 to-blue-500 text-white"
+                      ? "bg-gradient-to-br from-[#C41230] to-[#E8173A] text-white shadow-[#C41230]/20"
+                      : "bg-gradient-to-br from-purple-500 via-blue-500 to-cyan-500 text-white shadow-purple-500/20"
                   }`}
                 >
                   {msg.role === "user" ? (
@@ -148,8 +162,8 @@ export default function ChatPage() {
                 <div
                   className={`max-w-[80%] rounded-2xl px-4 py-3 text-sm leading-relaxed ${
                     msg.role === "user"
-                      ? "bg-primary text-primary-foreground"
-                      : "bg-muted/50 text-foreground"
+                      ? "bg-gradient-to-br from-primary to-primary/90 text-primary-foreground shadow-sm shadow-primary/10"
+                      : "bg-white ring-1 ring-black/[0.04] text-foreground shadow-sm dark:bg-gray-900 dark:ring-white/[0.06]"
                   }`}
                 >
                   {msg.content.split("\n").map((line, i) => (
@@ -180,10 +194,10 @@ export default function ChatPage() {
 
       {/* Input Area */}
       <div className="shrink-0 border-t border-border/30 bg-white/80 px-2 py-3 backdrop-blur-sm dark:bg-gray-950/80">
-        {messages.length > 0 && (
+        {storedMessages.length > 0 && (
           <div className="mb-2 flex justify-center">
             <button
-              onClick={() => setMessages([])}
+              onClick={clearMessages}
               className="flex items-center gap-1 rounded-full px-3 py-1 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
             >
               <RotateCcw className="h-3 w-3" />
@@ -191,7 +205,7 @@ export default function ChatPage() {
             </button>
           </div>
         )}
-        <div className="flex items-end gap-2 rounded-2xl bg-muted/30 p-2 ring-1 ring-border/50 focus-within:ring-primary/30">
+        <div className="flex items-end gap-2 rounded-2xl bg-white/80 p-2 shadow-lg shadow-black/[0.03] ring-1 ring-black/[0.06] backdrop-blur-sm transition-all focus-within:ring-2 focus-within:ring-primary/20 focus-within:shadow-xl focus-within:shadow-primary/[0.03] dark:bg-gray-900/80 dark:ring-white/[0.08]">
           <textarea
             ref={inputRef}
             value={input}
@@ -205,13 +219,13 @@ export default function ChatPage() {
           <button
             onClick={() => sendMessage()}
             disabled={!input.trim() || isTyping}
-            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary text-primary-foreground shadow-sm transition-all hover:brightness-110 disabled:opacity-40"
+            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-gradient-to-r from-primary to-primary/80 text-primary-foreground shadow-md shadow-primary/20 transition-all duration-200 hover:shadow-lg hover:shadow-primary/30 hover:brightness-110 disabled:opacity-40 disabled:shadow-none"
           >
             <Send className="h-4 w-4" />
           </button>
         </div>
         <p className="mt-1.5 text-center text-[10px] text-muted-foreground/40">
-          AI 功能开发中 · 当前为演示模式 · 后续将接入 LLM 实现智能对话
+          小川 AI · 四川大学智能校园助手
         </p>
       </div>
     </div>

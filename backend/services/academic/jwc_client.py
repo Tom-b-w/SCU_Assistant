@@ -81,11 +81,26 @@ class RealJwcClient(BaseJwcClient):
         self.redis = redis_client
         self.BASE_URL = base_url.rstrip("/")
 
-    def _make_http_client(self, session_value: str | None = None) -> httpx.AsyncClient:
+    def _make_http_client(self, session_value: str | bytes | None = None) -> httpx.AsyncClient:
         """创建 httpx 客户端，如果提供 session_value 则预置到 cookie jar 中。
-        使用 dict 形式的 cookies 让 httpx 自动对所有请求携带该 cookie（含重定向）。
+        session_value 支持两种格式：
+        - JSON 字符串: {"session": "xxx", "lb": "yyy"} — 包含负载均衡 cookie
+        - 纯字符串: 仅 student.urpSoft.cn 的值（向后兼容）
         """
-        cookies = {SESSION_COOKIE_NAME: session_value} if session_value else None
+        if isinstance(session_value, bytes):
+            session_value = session_value.decode("utf-8")
+
+        cookies = None
+        if session_value:
+            try:
+                parsed = json.loads(session_value)
+                cookies = {SESSION_COOKIE_NAME: parsed["session"]}
+                if parsed.get("lb"):
+                    cookies["XUANKE_LB"] = parsed["lb"]
+            except (json.JSONDecodeError, KeyError, TypeError):
+                # 向后兼容：纯 cookie 字符串
+                cookies = {SESSION_COOKIE_NAME: session_value}
+
         return httpx.AsyncClient(
             timeout=20.0,
             follow_redirects=True,
@@ -107,7 +122,9 @@ class RealJwcClient(BaseJwcClient):
             if not session_value:
                 raise RuntimeError("无法获取教务系统会话，请检查网络是否可访问 zhjw.scu.edu.cn")
 
-            logger.info("获取到教务系统会话 cookie: %s...", session_value[:12])
+            # 提取负载均衡 cookie
+            lb_value = resp.cookies.get("XUANKE_LB", "")
+            logger.info("获取到教务系统会话 cookie: %s..., LB: %s", session_value[:12], lb_value[:12] if lb_value else "NONE")
 
             # 提取 tokenValue 隐藏字段
             token_match = re.search(r'name="tokenValue"\s*value="([^"]+)"', resp.text)
@@ -116,6 +133,8 @@ class RealJwcClient(BaseJwcClient):
 
             # 2. 获取验证码图片 — 使用 cookie jar (client 自动带)
             client.cookies[SESSION_COOKIE_NAME] = session_value
+            if lb_value:
+                client.cookies["XUANKE_LB"] = lb_value
             captcha_resp = await client.get(f"{self.BASE_URL}/img/captcha.jpg")
             captcha_bytes = captcha_resp.content
             logger.info("获取到验证码图片: %d bytes, content-type: %s",
@@ -126,6 +145,7 @@ class RealJwcClient(BaseJwcClient):
             session_data = json.dumps({
                 "cookie": session_value,
                 "token": token_value,
+                "lb": lb_value,
             })
             await self.redis.set(session_key, session_data, ex=300)
 
@@ -141,13 +161,15 @@ class RealJwcClient(BaseJwcClient):
             return None
 
         # 解析存储的会话数据
+        lb_value = ""
         try:
             session_data = json.loads(session_data_str)
             session_value = session_data["cookie"]
             token_value = session_data.get("token", "")
+            lb_value = session_data.get("lb", "")
         except (json.JSONDecodeError, KeyError):
             # 兼容旧格式 (纯 cookie 值)
-            session_value = session_data_str
+            session_value = session_data_str if isinstance(session_data_str, str) else session_data_str.decode()
             token_value = ""
 
         # 教务系统密码加密: hex_md5(hex_md5(pwd+salt), ver=1.8) + '*' + hex_md5(hex_md5(pwd, ver=1.8), ver=1.8)
@@ -159,8 +181,9 @@ class RealJwcClient(BaseJwcClient):
         part2 = hashlib.md5(md5_no_salt.encode()).hexdigest()
         md5_password = f"{part1}*{part2}"
 
-        # 使用带 cookie jar 的客户端，确保重定向时 cookie 自动携带
-        async with self._make_http_client(session_value) as client:
+        # 构造包含 LB cookie 的 session JSON 以初始化客户端
+        init_session = json.dumps({"session": session_value, "lb": lb_value}) if lb_value else session_value
+        async with self._make_http_client(init_session) as client:
             client.headers["Referer"] = f"{self.BASE_URL}/login"
 
             post_data = {
@@ -207,11 +230,15 @@ class RealJwcClient(BaseJwcClient):
                 # 更新为最新的 session cookie
                 new_session = self._extract_session_cookie(follow_resp) or new_session
                 client.cookies[SESSION_COOKIE_NAME] = new_session
-                logger.info("跟随重定向后 session: %s...", new_session[:12])
+                # 更新 LB cookie
+                new_lb = follow_resp.cookies.get("XUANKE_LB") or lb_value
+                logger.info("跟随重定向后 session: %s..., LB: %s", new_session[:12], new_lb[:12] if new_lb else "NONE")
 
-            # 存储已认证会话（30分钟过期）
+            # 存储已认证会话（30分钟过期）— JSON 格式包含 LB cookie
             auth_key = f"jwc_auth:{student_id}"
-            await self.redis.set(auth_key, new_session, ex=1800)
+            new_lb = client.cookies.get("XUANKE_LB") or lb_value
+            auth_data = json.dumps({"session": new_session, "lb": new_lb})
+            await self.redis.set(auth_key, auth_data, ex=1800)
             await self.redis.delete(session_key)
 
             logger.info("登录成功: student_id=%s, auth_key=%s, session=%s...",
@@ -307,9 +334,10 @@ class RealJwcClient(BaseJwcClient):
                 page_resp = await client.get(
                     f"{self.BASE_URL}/student/courseSelect/thisSemesterCurriculum/index",
                 )
-                # 检查是否被重定向到登录页
-                if "/login" in str(page_resp.url):
-                    logger.warning("课表页面被重定向到登录页，会话可能已失效")
+                # 检查是否被重定向到登录页（教务系统可能重定向到 /login 或 /gotoLogin）
+                final_url = str(page_resp.url).lower()
+                if "/login" in final_url or "/gotologin" in final_url:
+                    logger.warning("课表页面被重定向到登录页 (%s)，会话可能已失效", page_resp.url)
                     await self.redis.delete(session_key)
                     return []
 
@@ -341,98 +369,145 @@ class RealJwcClient(BaseJwcClient):
     def _parse_schedule(self, data: dict) -> list[dict]:
         """解析 SCU 教务系统课表 JSON
 
-        数据结构:
-        - xkxx: dict of dict, key=课程号_序号, value=课程信息 (选课信息，含教师/课程名，但无具体星期/节次)
-        - dateList: [{selectCourseList: [...]}] (培养方案维度的选课列表)
-        - dgFlag 字段如果是 "(无)" 表示尚未排课
+        关键数据源:
+        - dateList[].selectCourseList[].timeAndPlaceList[] — 真正的排课时间地点
+          字段: classDay(星期), classSessions(开始节次), continuingSession(连续节数),
+                classroomName(教室), teachingBuildingName(教学楼), campusName(校区),
+                weekDescription(周次描述)
+        - xkxx: 选课信息，含教师/课程属性，但 dgFlag 常为"（无）"不可靠
         """
-        courses = []
-
         if not isinstance(data, dict):
             return []
 
-        # xkxx 是 dict-of-dict: {"311246020_01": {courseName: ..., attendClassTeacher: ...}}
-        xkxx = data.get("xkxx", {})
-        if isinstance(xkxx, dict):
-            # 记录第一门课的所有字段，帮助调试数据结构
-            for _first_key, _first_val in xkxx.items():
-                if isinstance(_first_val, dict):
-                    logger.info("课表字段示例 (key=%s): %s", _first_key, list(_first_val.keys()))
-                break
+        logger.info("课表响应顶层 keys: %s", list(data.keys()))
 
+        # 1. 从 xkxx 构建课程基本信息 map
+        xkxx_raw = data.get("xkxx", {})
+        xkxx: dict = {}
+        if isinstance(xkxx_raw, list):
+            for item in xkxx_raw:
+                if isinstance(item, dict):
+                    xkxx.update(item)
+        elif isinstance(xkxx_raw, dict):
+            xkxx = xkxx_raw
+
+        # 按 courseNumber_seqNumber 建立教师/属性查找表
+        teacher_map: dict[str, str] = {}  # course_key → teacher
+        type_map: dict[str, str] = {}     # course_key → course_type
+        for course_key, info in xkxx.items():
+            if isinstance(info, dict):
+                teacher_map[course_key] = info.get("attendClassTeacher", "").strip()
+                type_map[course_key] = info.get("coursePropertiesName", "")
+
+        # 2. 从 dateList → selectCourseList → timeAndPlaceList 提取排课
+        courses = []
+        seen: set[tuple] = set()
+        date_list = data.get("dateList", [])
+
+        if isinstance(date_list, list):
+            for plan_info in date_list:
+                if not isinstance(plan_info, dict):
+                    continue
+                for sc in plan_info.get("selectCourseList", []):
+                    if not isinstance(sc, dict):
+                        continue
+
+                    course_name = sc.get("courseName", "")
+                    if not course_name:
+                        continue
+
+                    # 从 xkxx 查找教师（更准确）
+                    sc_id = sc.get("id", {})
+                    c_num = sc_id.get("coureNumber", "") if isinstance(sc_id, dict) else ""
+                    c_seq = sc_id.get("coureSequenceNumber", "") if isinstance(sc_id, dict) else ""
+                    xkxx_key = f"{c_num}_{c_seq}" if c_num and c_seq else ""
+
+                    teacher = teacher_map.get(xkxx_key, sc.get("attendClassTeacher", "").strip())
+                    course_type = type_map.get(xkxx_key, sc.get("coursePropertiesName", ""))
+
+                    tap_list = sc.get("timeAndPlaceList") or []
+                    if not tap_list:
+                        # 无排课信息
+                        dedup = (course_name, 0, 0)
+                        if dedup not in seen:
+                            seen.add(dedup)
+                            courses.append({
+                                "course_name": course_name,
+                                "teacher": teacher,
+                                "location": "",
+                                "weekday": 0,
+                                "start_section": 0,
+                                "end_section": 0,
+                                "weeks": "",
+                                "course_type": course_type,
+                                "campus": "",
+                                "building": "",
+                                "is_scheduled": False,
+                            })
+                        continue
+
+                    for tap in tap_list:
+                        if not isinstance(tap, dict):
+                            continue
+
+                        weekday = int(tap.get("classDay", 0) or 0)
+                        start_section = int(tap.get("classSessions", 0) or 0)
+                        continuing = int(tap.get("continuingSession", 1) or 1)
+                        end_section = start_section + continuing - 1
+
+                        classroom = (tap.get("classroomName", "") or "").strip()
+                        building = (tap.get("teachingBuildingName", "") or "").strip()
+                        campus = (tap.get("campusName", "") or "").strip()
+                        week_desc = (tap.get("weekDescription", "") or "").strip()
+
+                        # 组合地点: "一教A座 A207" 或 "A207"
+                        location = f"{building} {classroom}".strip() if building else classroom
+
+                        if weekday and start_section:
+                            dedup = (course_name, weekday, start_section)
+                            if dedup in seen:
+                                continue
+                            seen.add(dedup)
+                            courses.append({
+                                "course_name": course_name,
+                                "teacher": teacher,
+                                "location": location,
+                                "weekday": weekday,
+                                "start_section": start_section,
+                                "end_section": end_section,
+                                "weeks": week_desc,
+                                "course_type": course_type,
+                                "campus": campus,
+                                "building": building,
+                                "is_scheduled": True,
+                            })
+
+        # 3. 如果 dateList 没有数据，回退到 xkxx 的 dgFlag
+        if not courses:
             for course_key, info in xkxx.items():
                 if not isinstance(info, dict):
                     continue
-
                 course_name = info.get("courseName", "")
                 if not course_name:
                     continue
-
                 teacher = info.get("attendClassTeacher", "").strip()
-                dg_flag = info.get("dgFlag", "(无)")
                 course_type = info.get("coursePropertiesName", "")
-
-                # 提取上课地点 — 可能在多个字段中
-                location = (
-                    info.get("classroomName", "")
-                    or info.get("classRoom", "")
-                    or info.get("teachingBuildingName", "")
-                    or info.get("jxcdmc", "")
-                    or ""
-                ).strip()
-
-                # dgFlag 包含排课信息，格式可能是:
-                #   "星期一第1-2节{1-16周}望江基教A305"
-                #   "星期一第1-2节{1-16周}"
-                #   "(无)"
-                weekday = 0
-                start_section = 0
-                end_section = 0
-                weeks = ""
-
-                if dg_flag and dg_flag != "(无)":
-                    # 尝试解析排课信息
-                    day_match = re.search(r"星期([一二三四五六日天])", dg_flag)
-                    if day_match:
-                        day_map = {"一": 1, "二": 2, "三": 3, "四": 4,
-                                   "五": 5, "六": 6, "日": 7, "天": 7}
-                        weekday = day_map.get(day_match.group(1), 0)
-
-                    section_match = re.search(r"第(\d+)-(\d+)节", dg_flag)
-                    if section_match:
-                        start_section = int(section_match.group(1))
-                        end_section = int(section_match.group(2))
-
-                    weeks_match = re.search(r"\{([^}]+)\}", dg_flag)
-                    if weeks_match:
-                        weeks = weeks_match.group(1)
-
-                    # 如果 location 为空，尝试从 dgFlag 末尾提取地点
-                    # dgFlag 格式: "星期X第N-M节{周次}地点名"
-                    if not location:
-                        # 去掉已解析部分后，剩余的就是地点
-                        loc_text = dg_flag
-                        loc_text = re.sub(r"星期[一二三四五六日天]", "", loc_text)
-                        loc_text = re.sub(r"第\d+-\d+节", "", loc_text)
-                        loc_text = re.sub(r"\{[^}]*\}", "", loc_text)
-                        loc_text = loc_text.strip()
-                        if loc_text:
-                            location = loc_text
-
-                # 同一门课可能有多个时间段（dgFlag 包含多段排课），
-                # 但 xkxx 通常每条只对应一个时间段
                 courses.append({
                     "course_name": course_name,
                     "teacher": teacher,
-                    "location": location,
-                    "weekday": weekday,
-                    "start_section": start_section,
-                    "end_section": end_section,
-                    "weeks": weeks,
+                    "location": "",
+                    "weekday": 0,
+                    "start_section": 0,
+                    "end_section": 0,
+                    "weeks": "",
                     "course_type": course_type,
+                    "campus": "",
+                    "building": "",
+                    "is_scheduled": False,
                 })
 
-        logger.info("成功解析 %d 门课程", len(courses))
+        logger.info("成功解析 %d 条课程记录 (其中 %d 条已排课)",
+                     len(courses), sum(1 for c in courses if c["is_scheduled"]))
         return courses
 
     async def get_scores(self, session_key: str) -> list[dict]:
@@ -447,8 +522,9 @@ class RealJwcClient(BaseJwcClient):
                 page_resp = await client.get(
                     f"{self.BASE_URL}/student/integratedQuery/scoreQuery/allPassingScores/index",
                 )
-                if "/login" in str(page_resp.url):
-                    logger.warning("成绩页面被重定向到登录页，会话可能已失效")
+                final_url = str(page_resp.url).lower()
+                if "/login" in final_url or "/gotologin" in final_url:
+                    logger.warning("成绩页面被重定向到登录页 (%s)，会话可能已失效", page_resp.url)
                     await self.redis.delete(session_key)
                     return []
 
@@ -553,32 +629,92 @@ class RealJwcClient(BaseJwcClient):
         return scores
 
     async def get_plan_completion(self, session_key: str) -> dict:
-        """获取方案完成情况 — 仅从成绩数据聚合，不猜测要求学分"""
-        scores = await self.get_scores(session_key)
-        if not scores:
+        """获取方案完成情况 — 从教务系统培养方案页面提取各类别学分"""
+        session_value = await self.redis.get(session_key)
+        if not session_value:
             return {"total_required_credits": 0, "earned_credits": 0, "categories": []}
 
-        # 按课程属性分类统计已修学分
-        cat_map: dict[str, float] = {}
-        total_credits = 0.0
+        async with self._make_http_client(session_value) as client:
+            try:
+                resp = await client.get(
+                    f"{self.BASE_URL}/student/integratedQuery/planCompletion/index",
+                )
+                final_url = str(resp.url).lower()
+                if "/login" in final_url or "/gotologin" in final_url:
+                    logger.warning("培养方案页面被重定向到登录页 (%s)", resp.url)
+                    await self.redis.delete(session_key)
+                    return {"total_required_credits": 0, "earned_credits": 0, "categories": []}
 
-        for s in scores:
-            credit = s.get("credit", 0)
-            course_type = s.get("course_type", "其他") or "其他"
-            total_credits += credit
-            cat_map[course_type] = cat_map.get(course_type, 0) + credit
+                html = resp.text
+                return self._parse_plan_completion(html)
+            except Exception as e:
+                logger.error("获取培养方案异常: %s", e, exc_info=True)
+                return {"total_required_credits": 0, "earned_credits": 0, "categories": []}
 
-        # 排序：必修在前
-        categories = sorted(cat_map.items(), key=lambda x: (0 if "必修" in x[0] else 1, x[0]))
+    def _parse_plan_completion(self, html: str) -> dict:
+        """解析培养方案 HTML 页面，提取各课程类别的要求学分和已修学分
 
-        return {
-            "total_required_credits": 0,  # 无法从教务系统可靠提取，不编造
-            "earned_credits": total_credits,
-            "categories": [{
-                "name": name,
-                "required_credits": 0,
+        页面中包含 JS 变量 zNodes（zTree 节点数组），
+        顶层节点 (pId=="-1") 即为课程大类，字段:
+        - zsxf: 最低修读学分（要求）
+        - yxxf: 已修学分（通过）
+        - name: 含 HTML 标签的类别名称
+        """
+        import json as _json
+
+        categories = []
+        total_required = 0.0
+        total_earned = 0.0
+
+        # 提取 JS 中的 zNodes 数组
+        nodes_match = re.search(r"var zNodes = (\[.*?\]);", html, re.DOTALL)
+        if not nodes_match:
+            logger.warning("培养方案页面未找到 zNodes 数据")
+            return {"total_required_credits": 0, "earned_credits": 0, "categories": []}
+
+        try:
+            nodes_str = nodes_match.group(1).replace("\\/", "/")
+            nodes = _json.loads(nodes_str)
+        except _json.JSONDecodeError as e:
+            logger.error("解析 zNodes JSON 失败: %s", e)
+            return {"total_required_credits": 0, "earned_credits": 0, "categories": []}
+
+        for node in nodes:
+            # 只取顶层类别 (pId == "-1")
+            if node.get("pId") != "-1":
+                continue
+
+            # 从 name HTML 中提取纯文本类别名
+            raw_name = node.get("name", "")
+            clean_name = re.sub(r"<[^>]+>", "", raw_name).strip()
+            # 去掉 &nbsp; 和括号内的详细信息
+            clean_name = clean_name.replace("&nbsp;", "").strip()
+            paren_idx = clean_name.find("(")
+            if paren_idx == -1:
+                paren_idx = clean_name.find("（")
+            if paren_idx > 0:
+                clean_name = clean_name[:paren_idx].strip()
+
+            required = float(node.get("zsxf") or 0)
+            earned = float(node.get("yxxf") or 0)
+
+            if not clean_name:
+                continue
+
+            categories.append({
+                "name": clean_name,
+                "required_credits": required,
                 "earned_credits": earned,
-            } for name, earned in categories],
+            })
+            total_required += required
+            total_earned += earned
+
+        logger.info("培养方案: %d 个类别, 要求 %.1f 学分, 已修 %.1f 学分",
+                     len(categories), total_required, total_earned)
+        return {
+            "total_required_credits": total_required,
+            "earned_credits": total_earned,
+            "categories": categories,
         }
 
     @staticmethod

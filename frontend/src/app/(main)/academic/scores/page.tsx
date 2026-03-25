@@ -54,6 +54,14 @@ function scoreDotColor(score: string): string {
   return "bg-red-500";
 }
 
+function scoreBgColor(score: string): string {
+  const n = parseFloat(score);
+  if (isNaN(n)) return "bg-emerald-500/10";
+  if (n >= 90) return "bg-emerald-500/10";
+  if (n >= 60) return "bg-yellow-500/10";
+  return "bg-red-500/10";
+}
+
 export default function ScoresPage() {
   const [scores, setScores] = useState<Score[]>([]);
   const [planCompletion, setPlanCompletion] = useState<PlanCompletion | null>(null);
@@ -89,42 +97,46 @@ export default function ScoresPage() {
     load();
   }, []);
 
-  // Compute summary stats
-  const totalCredits = useMemo(
-    () => scores.reduce((sum, s) => sum + s.credit, 0),
-    [scores]
-  );
-
-  const weightedAvg = useMemo(() => {
-    if (totalCredits === 0) return "--";
-    const weightedSum = scores.reduce((sum, s) => {
-      const n = parseFloat(s.score);
-      return sum + (isNaN(n) ? 0 : n * s.credit);
-    }, 0);
-    return (weightedSum / totalCredits).toFixed(1);
-  }, [scores, totalCredits]);
-
-  const avgGpa = useMemo(() => {
-    if (totalCredits === 0) return "--";
-    const gpaSum = scores.reduce((sum, s) => sum + s.gpa * s.credit, 0);
-    return (gpaSum / totalCredits).toFixed(2);
-  }, [scores, totalCredits]);
-
   // Extract unique semesters
   const semesters = useMemo(() => {
     const set = new Set(scores.map((s) => s.semester));
     return Array.from(set).sort().reverse();
   }, [scores]);
 
-  // Filter and sort
+  // Filter by semester
+  const filteredScores = useMemo(() => {
+    return selectedSemester === "all"
+      ? scores
+      : scores.filter((s) => s.semester === selectedSemester);
+  }, [scores, selectedSemester]);
+
+  // Compute summary stats based on filtered scores (dynamic per semester)
+  const filteredCredits = useMemo(
+    () => filteredScores.reduce((sum, s) => sum + s.credit, 0),
+    [filteredScores]
+  );
+
+  const filteredWeightedAvg = useMemo(() => {
+    if (filteredCredits === 0) return "--";
+    const weightedSum = filteredScores.reduce((sum, s) => {
+      const n = parseFloat(s.score);
+      return sum + (isNaN(n) ? 0 : n * s.credit);
+    }, 0);
+    return (weightedSum / filteredCredits).toFixed(1);
+  }, [filteredScores, filteredCredits]);
+
+  const filteredAvgGpa = useMemo(() => {
+    if (filteredCredits === 0) return "--";
+    const gpaSum = filteredScores.reduce((sum, s) => sum + s.gpa * s.credit, 0);
+    return (gpaSum / filteredCredits).toFixed(2);
+  }, [filteredScores, filteredCredits]);
+
+  // Filter and sort for display
   const displayScores = useMemo(() => {
-    let filtered =
-      selectedSemester === "all"
-        ? [...scores]
-        : scores.filter((s) => s.semester === selectedSemester);
+    const sorted = [...filteredScores];
 
     if (sortKey) {
-      filtered.sort((a, b) => {
+      sorted.sort((a, b) => {
         let valA: number, valB: number;
         if (sortKey === "score") {
           valA = parseFloat(a.score) || 0;
@@ -140,8 +152,8 @@ export default function ScoresPage() {
       });
     }
 
-    return filtered;
-  }, [scores, selectedSemester, sortKey, sortDir]);
+    return sorted;
+  }, [filteredScores, sortKey, sortDir]);
 
   function handleSort(key: SortKey) {
     if (sortKey === key) {
@@ -208,31 +220,31 @@ export default function ScoresPage() {
         </div>
       )}
 
-      {/* Summary Stats */}
+      {/* Summary Stats — dynamic per selected semester */}
       {scores.length > 0 && (
         <div className="grid grid-cols-2 gap-3 md:grid-cols-4 md:gap-4">
           {[
             {
-              label: "总学分",
-              value: totalCredits.toString(),
+              label: selectedSemester === "all" ? "总学分" : "学期学分",
+              value: filteredCredits.toString(),
               icon: Award,
               color: "from-orange-500 to-red-500",
             },
             {
               label: "加权均分",
-              value: weightedAvg,
+              value: filteredWeightedAvg,
               icon: TrendingUp,
               color: "from-emerald-500 to-green-600",
             },
             {
               label: "平均绩点",
-              value: avgGpa,
+              value: filteredAvgGpa,
               icon: GraduationCap,
               color: "from-cyan-500 to-blue-500",
             },
             {
-              label: "课程总数",
-              value: scores.length.toString(),
+              label: selectedSemester === "all" ? "课程总数" : "学期课程数",
+              value: filteredScores.length.toString(),
               icon: Hash,
               color: "from-purple-500 to-indigo-500",
             },
@@ -241,7 +253,7 @@ export default function ScoresPage() {
             return (
               <div
                 key={stat.label}
-                className="rounded-xl bg-white p-4 shadow-sm ring-1 ring-black/[0.04] dark:bg-gray-900 dark:ring-white/[0.06]"
+                className="rounded-xl bg-white p-4 shadow-sm ring-1 ring-black/[0.04] transition-all duration-200 hover:shadow-md dark:bg-gray-900 dark:ring-white/[0.06]"
               >
                 <div
                   className={`inline-flex rounded-lg bg-gradient-to-br ${stat.color} p-2.5 text-white shadow-sm`}
@@ -258,7 +270,7 @@ export default function ScoresPage() {
         </div>
       )}
 
-      {/* Credit Statistics */}
+      {/* Credit Statistics with per-category required/earned progress */}
       {planCompletion && planCompletion.categories.length > 0 && (
         <div className="rounded-xl bg-white p-5 shadow-sm ring-1 ring-black/[0.04] dark:bg-gray-900 dark:ring-white/[0.06]">
           <div className="flex items-center justify-between">
@@ -266,18 +278,18 @@ export default function ScoresPage() {
               <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-500/10">
                 <Target className="h-4 w-4 text-emerald-500" />
               </div>
-              <h3 className="font-semibold">已修学分统计</h3>
+              <h3 className="font-semibold">学分完成进度</h3>
             </div>
             {hasRequiredCredits && (
-              <span className="text-xs text-muted-foreground">
-                {creditProgress}%
+              <span className="rounded-full bg-emerald-500/10 px-2.5 py-0.5 text-xs font-medium text-emerald-600 dark:text-emerald-400">
+                总进度 {creditProgress}%
               </span>
             )}
           </div>
           <div className="mt-4 space-y-4">
-            {/* Total */}
+            {/* Total progress */}
             <div>
-              <div className="mb-1 flex justify-between text-sm">
+              <div className="mb-1.5 flex justify-between text-sm">
                 <span className="text-muted-foreground">已修总学分</span>
                 <span className="font-medium">
                   {planCompletion.earned_credits}
@@ -294,24 +306,53 @@ export default function ScoresPage() {
               )}
             </div>
 
-            {/* Per-category */}
+            {/* Per-category: show earned/required progress */}
             <div className="grid gap-3 md:grid-cols-2">
               {planCompletion.categories.map((cat, i) => {
-                const barWidth = planCompletion.earned_credits > 0
-                  ? Math.round((cat.earned_credits / planCompletion.earned_credits) * 100)
+                const catHasRequired = cat.required_credits > 0;
+                const catProgress = catHasRequired
+                  ? Math.min(100, Math.round((cat.earned_credits / cat.required_credits) * 100))
                   : 0;
+                const isComplete = catHasRequired && cat.earned_credits >= cat.required_credits;
                 return (
-                  <div key={i}>
-                    <div className="mb-1 flex justify-between text-xs">
-                      <span className="text-muted-foreground">{cat.name}</span>
-                      <span className="font-medium">{cat.earned_credits} 学分</span>
+                  <div
+                    key={i}
+                    className="rounded-lg bg-muted/20 p-3 transition-colors dark:bg-muted/10"
+                  >
+                    <div className="mb-1.5 flex items-center justify-between text-xs">
+                      <span className="font-medium">{cat.name}</span>
+                      <span className="text-muted-foreground">
+                        {cat.earned_credits}
+                        {catHasRequired ? ` / ${cat.required_credits} 学分` : " 学分"}
+                        {isComplete && (
+                          <span className="ml-1.5 text-emerald-600 dark:text-emerald-400">已达标</span>
+                        )}
+                      </span>
                     </div>
-                    <div className="h-2 w-full overflow-hidden rounded-full bg-muted/50">
-                      <div
-                        className={`h-full rounded-full bg-gradient-to-r ${BAR_COLORS[i % BAR_COLORS.length]} transition-all duration-500`}
-                        style={{ width: `${barWidth}%` }}
-                      />
-                    </div>
+                    {catHasRequired ? (
+                      <div className="h-2 w-full overflow-hidden rounded-full bg-muted/50">
+                        <div
+                          className={`h-full rounded-full bg-gradient-to-r ${
+                            isComplete
+                              ? "from-emerald-400 to-emerald-500"
+                              : BAR_COLORS[i % BAR_COLORS.length]
+                          } transition-all duration-500`}
+                          style={{ width: `${catProgress}%` }}
+                        />
+                      </div>
+                    ) : (
+                      <div className="h-2 w-full overflow-hidden rounded-full bg-muted/50">
+                        <div
+                          className={`h-full rounded-full bg-gradient-to-r ${BAR_COLORS[i % BAR_COLORS.length]} transition-all duration-500`}
+                          style={{ width: `${planCompletion.earned_credits > 0 ? Math.round((cat.earned_credits / planCompletion.earned_credits) * 100) : 0}%` }}
+                        />
+                      </div>
+                    )}
+                    {catHasRequired && (
+                      <p className="mt-1 text-right text-[10px] text-muted-foreground">
+                        {catProgress}%
+                      </p>
+                    )}
                   </div>
                 );
               })}
@@ -340,7 +381,7 @@ export default function ScoresPage() {
                 className="inline-flex items-center gap-1.5 rounded-lg border border-border/50 bg-muted/30 px-3 py-1.5 text-xs font-medium transition-colors hover:bg-muted/60"
               >
                 {selectedSemester === "all" ? "全部学期" : selectedSemester}
-                <ChevronDown className="h-3 w-3 text-muted-foreground" />
+                <ChevronDown className={`h-3 w-3 text-muted-foreground transition-transform duration-200 ${semesterDropdownOpen ? "rotate-180" : ""}`} />
               </button>
               {semesterDropdownOpen && (
                 <>
@@ -348,36 +389,43 @@ export default function ScoresPage() {
                     className="fixed inset-0 z-10"
                     onClick={() => setSemesterDropdownOpen(false)}
                   />
-                  <div className="absolute left-0 top-full z-20 mt-1 min-w-[160px] rounded-lg border border-border/50 bg-white py-1 shadow-lg dark:bg-gray-900">
+                  <div className="absolute left-0 top-full z-20 mt-1 min-w-[180px] rounded-lg border border-border/50 bg-white py-1 shadow-lg dark:bg-gray-900">
                     <button
                       onClick={() => {
                         setSelectedSemester("all");
                         setSemesterDropdownOpen(false);
                       }}
-                      className={`block w-full px-3 py-1.5 text-left text-xs transition-colors hover:bg-muted/50 ${
+                      className={`block w-full px-3 py-2 text-left text-xs transition-colors hover:bg-muted/50 ${
                         selectedSemester === "all"
-                          ? "font-semibold text-[#C41230]"
+                          ? "bg-[#C41230]/5 font-semibold text-[#C41230]"
                           : ""
                       }`}
                     >
                       全部学期
+                      {selectedSemester === "all" && (
+                        <span className="ml-2 text-[10px] opacity-60">({scores.length} 门)</span>
+                      )}
                     </button>
-                    {semesters.map((sem) => (
-                      <button
-                        key={sem}
-                        onClick={() => {
-                          setSelectedSemester(sem);
-                          setSemesterDropdownOpen(false);
-                        }}
-                        className={`block w-full px-3 py-1.5 text-left text-xs transition-colors hover:bg-muted/50 ${
-                          selectedSemester === sem
-                            ? "font-semibold text-[#C41230]"
-                            : ""
-                        }`}
-                      >
-                        {sem}
-                      </button>
-                    ))}
+                    {semesters.map((sem) => {
+                      const semCount = scores.filter((s) => s.semester === sem).length;
+                      return (
+                        <button
+                          key={sem}
+                          onClick={() => {
+                            setSelectedSemester(sem);
+                            setSemesterDropdownOpen(false);
+                          }}
+                          className={`block w-full px-3 py-2 text-left text-xs transition-colors hover:bg-muted/50 ${
+                            selectedSemester === sem
+                              ? "bg-[#C41230]/5 font-semibold text-[#C41230]"
+                              : ""
+                          }`}
+                        >
+                          {sem}
+                          <span className="ml-2 text-[10px] opacity-60">({semCount} 门)</span>
+                        </button>
+                      );
+                    })}
                   </div>
                 </>
               )}
@@ -418,7 +466,7 @@ export default function ScoresPage() {
             </span>
           </div>
 
-          {/* Table header */}
+          {/* Table header — desktop only */}
           <div className="hidden md:grid md:grid-cols-12 gap-2 px-4 py-2.5 text-xs font-medium text-muted-foreground border-b border-border/20">
             <span className="col-span-3">课程名称</span>
             <span className="col-span-2">学期</span>
@@ -474,27 +522,39 @@ export default function ScoresPage() {
 
                   {/* Mobile card */}
                   <div className="md:hidden">
-                    <div className="flex items-center justify-between">
+                    <div className="flex items-start justify-between gap-3">
                       <div className="flex items-center gap-2 min-w-0 flex-1">
                         <div
-                          className={`h-2 w-2 shrink-0 rounded-full ${scoreDotColor(item.score)}`}
+                          className={`h-2 w-2 shrink-0 rounded-full mt-1.5 ${scoreDotColor(item.score)}`}
                         />
-                        <span className="text-sm font-medium truncate">
-                          {item.course_name}
-                        </span>
+                        <div className="min-w-0">
+                          <span className="block text-sm font-medium truncate">
+                            {item.course_name}
+                          </span>
+                          <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] text-muted-foreground">
+                            <span>{item.semester}</span>
+                            <span className="rounded bg-muted/50 px-1.5 py-0.5">{item.course_type}</span>
+                            <span>{item.credit} 学分</span>
+                          </div>
+                        </div>
                       </div>
-                      <span
-                        className={`text-lg font-bold ${scoreColor(item.score)}`}
-                      >
-                        {item.score}
-                      </span>
-                    </div>
-                    <div className="mt-1 flex items-center gap-3 pl-4 text-xs text-muted-foreground">
-                      <span>{item.semester}</span>
-                      <span>{item.course_type}</span>
-                      <span>{item.credit} 学分</span>
-                      <span>绩点 {item.gpa}</span>
-                      <span className={scoreColor(item.score)}>{grade}</span>
+                      <div className="flex flex-col items-end shrink-0">
+                        <span
+                          className={`text-lg font-bold leading-tight ${scoreColor(item.score)}`}
+                        >
+                          {item.score}
+                        </span>
+                        <div className="mt-0.5 flex items-center gap-1.5 text-[11px]">
+                          <span className="text-muted-foreground">
+                            绩点 {item.gpa}
+                          </span>
+                          <span
+                            className={`rounded px-1.5 py-0.5 text-[10px] font-medium ${scoreBgColor(item.score)} ${scoreColor(item.score)}`}
+                          >
+                            {grade}
+                          </span>
+                        </div>
+                      </div>
                     </div>
                   </div>
                 </div>
