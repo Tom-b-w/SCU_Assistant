@@ -34,6 +34,9 @@ class Settings(BaseSettings):
     # 和风天气 API
     qweather_api_key: str = ""
 
+    # 学习通
+    chaoxing_encrypt_key: str = ""
+
     # Rate Limiting
     rate_limit_per_minute: int = 60
     chat_rate_limit_per_minute: int = 20

@@ -26,6 +26,7 @@ from services.studyplan.router import router as studyplan_router
 from services.weather.router import router as weather_router
 from services.notification.router import router as notification_router
 from services.briefing.router import router as briefing_router
+from services.chaoxing.router import router as chaoxing_router
 
 
 def create_app() -> FastAPI:
@@ -48,6 +49,7 @@ def create_app() -> FastAPI:
     app.include_router(weather_router)
     app.include_router(notification_router)
     app.include_router(briefing_router)
+    app.include_router(chaoxing_router)
 
     @app.on_event("startup")
     async def seed_data():

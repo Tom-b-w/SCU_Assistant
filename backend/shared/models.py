@@ -160,6 +160,27 @@ class Notification(Base):
     )
 
 
+class ChaoxingSession(Base):
+    """学习通登录会话"""
+    __tablename__ = "chaoxing_sessions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("users.id"), nullable=False, unique=True, index=True
+    )
+    encrypted_cookies: Mapped[str] = mapped_column(Text, nullable=False)
+    cx_uid: Mapped[str] = mapped_column(String(50), nullable=False)
+    cx_name: Mapped[str | None] = mapped_column(String(100))
+    is_valid: Mapped[bool] = mapped_column(Boolean, default=True)
+    last_sync_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+    updated_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
 class Deadline(Base):
     __tablename__ = "deadlines"
 

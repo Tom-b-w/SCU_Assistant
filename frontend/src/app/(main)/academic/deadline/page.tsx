@@ -13,6 +13,7 @@ import {
   Trash2,
   X,
   Loader2,
+  RefreshCw,
 } from "lucide-react";
 import {
   getDeadlines,
@@ -21,6 +22,14 @@ import {
   deleteDeadline,
   type Deadline,
 } from "@/lib/deadline";
+import {
+  getBindStatus,
+  syncDeadlines as syncChaoxingDeadlines,
+  unbindChaoxing,
+  type BindStatus,
+  type SyncResult,
+} from "@/lib/chaoxing";
+import { QRLoginModal } from "@/components/chaoxing/qr-login-modal";
 
 const PRIORITY_CONFIG = {
   high: { label: "紧急", color: "bg-red-500", badge: "bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300" },
@@ -43,6 +52,10 @@ export default function DeadlinePage() {
   const [newDate, setNewDate] = useState("");
   const [newPriority, setNewPriority] = useState<"low" | "medium" | "high">("medium");
   const [filter, setFilter] = useState<"all" | "pending" | "completed">("all");
+  const [bindStatus, setBindStatus] = useState<BindStatus | null>(null);
+  const [showQRModal, setShowQRModal] = useState(false);
+  const [syncing, setSyncing] = useState(false);
+  const [syncResult, setSyncResult] = useState<SyncResult | null>(null);
 
   const fetchDeadlines = useCallback(async () => {
     try {
@@ -57,6 +70,7 @@ export default function DeadlinePage() {
 
   useEffect(() => {
     fetchDeadlines();
+    getBindStatus().then(setBindStatus).catch(() => {});
   }, [fetchDeadlines]);
 
   const filtered = deadlines
@@ -92,6 +106,28 @@ export default function DeadlinePage() {
     } finally {
       setSubmitting(false);
     }
+  }
+
+  async function handleChaoxingSync() {
+    setSyncing(true);
+    setSyncResult(null);
+    try {
+      const result = await syncChaoxingDeadlines();
+      setSyncResult(result);
+      fetchDeadlines();
+    } catch (err: unknown) {
+      const msg = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
+      alert(msg || "同步失败，请重试");
+    } finally {
+      setSyncing(false);
+    }
+  }
+
+  async function handleUnbind() {
+    if (!confirm("确定要解绑学习通吗？")) return;
+    await unbindChaoxing();
+    setBindStatus({ is_bound: false, cx_name: null, last_sync_at: null });
+    setSyncResult(null);
   }
 
   async function toggleStatus(dl: Deadline) {
@@ -147,6 +183,70 @@ export default function DeadlinePage() {
           {showAdd ? "取消" : "添加"}
         </Button>
       </div>
+
+      {/* 学习通同步 */}
+      <div className="flex flex-wrap items-center gap-2 rounded-xl bg-blue-50 dark:bg-blue-950/30 px-4 py-3 ring-1 ring-blue-100 dark:ring-blue-900/40">
+        {bindStatus?.is_bound ? (
+          <>
+            <span className="text-sm text-blue-700 dark:text-blue-300 mr-auto">
+              ✓ 已绑定学习通：{bindStatus.cx_name || "学习通用户"}
+              {bindStatus.last_sync_at && (
+                <span className="ml-2 text-xs text-blue-400">
+                  上次同步：{new Date(bindStatus.last_sync_at).toLocaleString("zh-CN")}
+                </span>
+              )}
+            </span>
+            <button
+              onClick={handleChaoxingSync}
+              disabled={syncing}
+              className="flex items-center gap-1.5 rounded-lg bg-blue-500 px-3 py-1.5 text-sm text-white hover:bg-blue-600 disabled:opacity-50 transition-colors"
+            >
+              <RefreshCw className={`h-3.5 w-3.5 ${syncing ? "animate-spin" : ""}`} />
+              {syncing ? "同步中..." : "同步作业 DDL"}
+            </button>
+            <button
+              onClick={handleUnbind}
+              className="rounded-lg px-3 py-1.5 text-sm text-red-500 hover:bg-red-50 dark:hover:bg-red-950/30 transition-colors"
+            >
+              解绑
+            </button>
+          </>
+        ) : (
+          <>
+            <span className="text-sm text-gray-500 mr-auto">未绑定学习通，可自动同步作业 DDL</span>
+            <button
+              onClick={() => setShowQRModal(true)}
+              className="rounded-lg bg-blue-500 px-3 py-1.5 text-sm text-white hover:bg-blue-600 transition-colors"
+            >
+              扫码绑定
+            </button>
+          </>
+        )}
+      </div>
+
+      {/* 同步结果提示 */}
+      {syncResult && (
+        <div className="rounded-xl bg-green-50 dark:bg-green-950/30 px-4 py-3 text-sm text-green-700 dark:text-green-300 ring-1 ring-green-100 dark:ring-green-900/40">
+          同步完成：共 {syncResult.total_works} 项作业，新增{" "}
+          <span className="font-semibold">{syncResult.new_deadlines}</span> 个 DDL，跳过{" "}
+          {syncResult.skipped} 个（已存在或已过期）
+          {syncResult.courses.length > 0 && (
+            <div className="mt-1 text-xs text-green-600 dark:text-green-400">
+              涉及课程：{syncResult.courses.join("、")}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* QR 码弹窗 */}
+      <QRLoginModal
+        open={showQRModal}
+        onClose={() => setShowQRModal(false)}
+        onSuccess={() => {
+          setShowQRModal(false);
+          getBindStatus().then(setBindStatus).catch(() => {});
+        }}
+      />
 
       {/* Add Form */}
       {showAdd && (
