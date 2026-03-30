@@ -67,51 +67,101 @@ class ChaoxingClient:
     # ---- QR 码登录流程 ----
 
     async def create_qr_session(self) -> QRSession:
-        """创建 QR 码登录会话，返回二维码图片 URL"""
-        qr_uuid = str(uuid_mod.uuid4())
+        """
+        访问登录页提取 uuid/enc，GET 一次 QR 图片激活 session。
+        返回包含 uuid、enc、qr_image_bytes 的会话对象。
+        """
+        # 1. 获取登录页，拿到 uuid 和 enc（server-side hidden input）
         resp = await self._http.get(
-            f"{PASSPORT_BASE}/createqr",
-            params={"uuid": qr_uuid, "fid": "-1"},
+            f"{PASSPORT_BASE}/login",
+            params={"fid": "-1"},
+            headers={"Accept": "text/html,application/xhtml+xml,*/*;q=0.8"},
         )
         resp.raise_for_status()
+        text = resp.text
 
-        enc = ""
-        match = re.search(r'enc\s*=\s*"([^"]+)"', resp.text)
-        if match:
-            enc = match.group(1)
+        uuid_match = re.search(r"createqr\?uuid=([a-f0-9]+)", text)
+        qr_uuid = uuid_match.group(1) if uuid_match else str(uuid_mod.uuid4())
 
-        qr_url = f"{PASSPORT_BASE}/createqr?uuid={qr_uuid}&fid=-1&qrenc={enc}"
-        return QRSession(uuid=qr_uuid, qr_url=qr_url, enc=enc)
+        enc_match = re.search(r'id="enc"[^>]*value="([^"]+)"', text)
+        if not enc_match:
+            enc_match = re.search(r'value="([a-f0-9]{32})"[^>]*id="enc"', text)
+        enc = enc_match.group(1) if enc_match else ""
 
-    async def get_qr_image_url(self, qr_session: QRSession) -> str:
-        """获取可直接展示的 QR 图片 URL"""
-        return (
-            f"{PASSPORT_BASE}/createqr"
-            f"?uuid={qr_session.uuid}&fid=-1&qrenc={qr_session.enc}"
+        # 2. GET QR 图片一次，激活服务器端 QR session（必须！否则立即失效）
+        qr_image_url = f"{PASSPORT_BASE}/createqr?uuid={qr_uuid}&fid=-1"
+        await self._http.get(
+            qr_image_url,
+            headers={"Referer": f"{PASSPORT_BASE}/login?fid=-1"},
         )
 
+        return QRSession(uuid=qr_uuid, qr_url=qr_image_url, enc=enc)
+
+    async def get_qr_image_url(self, qr_session: QRSession) -> str:
+        """返回二维码图片 URL"""
+        return qr_session.qr_url
+
+    async def get_qr_image_bytes(self, qr_session: QRSession) -> bytes:
+        """获取二维码图片字节（携带 session cookies，供后端代理给前端）"""
+        resp = await self._http.get(
+            qr_session.qr_url,
+            headers={"Referer": f"{PASSPORT_BASE}/login?fid=-1"},
+        )
+        resp.raise_for_status()
+        return resp.content
+
     async def poll_qr_status(self, qr_session: QRSession) -> dict:
-        """轮询 QR 码扫描状态"""
+        """
+        轮询 QR 码扫描状态（/getauthstatus/v2）
+        返回: {"status": 0/1/2/3}
+          0 = 未扫描（type==3）
+          1 = 已扫码待确认（type==1）
+          2 = 登录成功（status==True）
+          3 = 已过期（type==2）
+        """
         resp = await self._http.post(
-            f"{PASSPORT_BASE}/getauthstatus",
-            data={"enc": qr_session.enc, "uuid": qr_session.uuid},
+            f"{PASSPORT_BASE}/getauthstatus/v2",
+            headers={
+                "X-Requested-With": "XMLHttpRequest",
+                "Referer": f"{PASSPORT_BASE}/login?fid=-1",
+                "Accept": "application/json, text/javascript, */*; q=0.01",
+            },
+            data={
+                "enc": qr_session.enc,
+                "uuid": qr_session.uuid,
+                "doubleFactorLogin": "0",
+                "forbidotherlogin": "0",
+            },
         )
         resp.raise_for_status()
         data = resp.json()
 
-        result: dict = {"status": data.get("status", 0)}
+        # 登录成功
+        if data.get("status"):
+            cookies = {k: v for k, v in self._http.cookies.items()}
+            for c in resp.cookies.jar:
+                cookies[c.name] = c.value
+            redirect_url = data.get("url", "")
+            if redirect_url:
+                try:
+                    redir_resp = await self._http.get(redirect_url)
+                    for c in redir_resp.cookies.jar:
+                        cookies[c.name] = c.value
+                except Exception:
+                    pass
+            return {
+                "status": 2,
+                "cookies": cookies,
+                "uid": data.get("uid", cookies.get("UID", cookies.get("_uid", ""))),
+                "uname": data.get("uname", data.get("username", "")),
+            }
 
-        if data.get("status") == 2:
-            cookies = {c.name: c.value for c in resp.cookies.jar}
-            if "url" in data:
-                redir_resp = await self._http.get(data["url"])
-                for c in redir_resp.cookies.jar:
-                    cookies[c.name] = c.value
-            result["cookies"] = cookies
-            result["uid"] = data.get("uid", cookies.get("UID", ""))
-            result["uname"] = data.get("uname", "")
-
-        return result
+        tp = data.get("type", "")
+        if tp == "2":
+            return {"status": 3}  # 已过期
+        if tp == "1":
+            return {"status": 1}  # 已扫码待确认
+        return {"status": 0}      # 等待扫码（type==3 或其他）
 
     # ---- 课程和作业 API ----
 

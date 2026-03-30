@@ -1,4 +1,5 @@
 """学习通业务逻辑：session 管理、DDL 同步"""
+import base64
 import json
 from datetime import datetime, timezone
 
@@ -24,29 +25,48 @@ class ChaoxingService:
     # ---- QR 码登录流程 ----
 
     async def start_qr_login(self, redis) -> dict:
-        """创建 QR 码登录会话，返回 session_id 和 qr_image_url"""
-        qr = await self.client.create_qr_session()
+        """
+        创建 QR 码登录会话。
+        每次登录用独立的 ChaoxingClient（避免多用户 cookie 混用）。
+        client 的 cookies 序列化存 Redis，供后续轮询时复用。
+        """
+        login_client = ChaoxingClient()
+        try:
+            qr = await login_client.create_qr_session()
+            img_bytes = await login_client.get_qr_image_bytes(qr)
 
-        session_id = f"qr_{qr.uuid}"
-        await redis.setex(
-            f"{QR_SESSION_PREFIX}{session_id}",
-            QR_SESSION_TTL,
-            json.dumps({"uuid": qr.uuid, "enc": qr.enc}),
-        )
+            session_id = f"qr_{qr.uuid}"
+            # 保存 uuid、enc 和当前 session cookies（供轮询时携带）
+            session_cookies = {k: v for k, v in login_client._http.cookies.items()}
+            await redis.setex(
+                f"{QR_SESSION_PREFIX}{session_id}",
+                QR_SESSION_TTL,
+                json.dumps({"uuid": qr.uuid, "enc": qr.enc, "cookies": session_cookies}),
+            )
 
-        qr_image_url = await self.client.get_qr_image_url(qr)
-        return {"session_id": session_id, "qr_image_url": qr_image_url}
+            qr_image_url = f"data:image/jpeg;base64,{base64.b64encode(img_bytes).decode()}"
+            return {"session_id": session_id, "qr_image_url": qr_image_url}
+        finally:
+            await login_client.close()
 
     async def check_qr_status(self, redis, session_id: str) -> dict:
-        """检查 QR 码扫描状态"""
+        """检查 QR 码扫描状态（用独立 client 携带原始 session cookies）"""
         raw = await redis.get(f"{QR_SESSION_PREFIX}{session_id}")
         if not raw:
             return {"status": 3, "message": "二维码已过期，请重新获取"}
 
         qr_data = json.loads(raw)
         qr = QRSession(uuid=qr_data["uuid"], qr_url="", enc=qr_data["enc"])
+        session_cookies = qr_data.get("cookies", {})
 
-        result = await self.client.poll_qr_status(qr)
+        poll_client = ChaoxingClient()
+        # 恢复登录时的 session cookies
+        for k, v in session_cookies.items():
+            poll_client._http.cookies.set(k, v)
+        try:
+            result = await poll_client.poll_qr_status(qr)
+        finally:
+            await poll_client.close()
         status = result["status"]
 
         messages = {
