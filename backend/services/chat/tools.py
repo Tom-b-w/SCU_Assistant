@@ -121,9 +121,9 @@ async def execute_tool(
     """
     try:
         if tool_name == "get_today_schedule":
-            return await _exec_get_today_schedule(student_id, redis_client)
+            return await _exec_get_today_schedule(student_id, redis_client, db)
         elif tool_name == "get_grades_summary":
-            return await _exec_get_grades_summary(student_id, redis_client)
+            return await _exec_get_grades_summary(student_id, redis_client, db)
         elif tool_name == "get_deadlines":
             return await _exec_get_deadlines(user_id, db)
         elif tool_name == "search_knowledge_base":
@@ -146,32 +146,50 @@ async def execute_tool(
         )
 
 
-async def _exec_get_today_schedule(student_id: str, redis_client) -> str:
-    """查询今天的课表"""
-    from services.academic.jwc_client import get_jwc_client
+async def _exec_get_today_schedule(student_id: str, redis_client, db: AsyncSession | None = None) -> str:
+    """查询今天的课表（优先从数据库缓存读取，支持无 Redis session 场景）"""
+    from sqlalchemy import select as sa_select
+    from shared.models import AcademicCache, User
 
-    # 从 Redis 获取已认证的教务系统 session
+    # 优先从 AcademicCache（数据库）读取
+    if db:
+        try:
+            # 查找 user_id
+            user_result = await db.execute(
+                sa_select(User).where(User.student_id == student_id)
+            )
+            user = user_result.scalar_one_or_none()
+            if user:
+                cache_result = await db.execute(
+                    sa_select(AcademicCache).where(
+                        AcademicCache.user_id == user.id,
+                        AcademicCache.data_type == "schedule",
+                    )
+                )
+                cache = cache_result.scalar_one_or_none()
+                if cache and cache.data:
+                    schedule = cache.data if isinstance(cache.data, list) else []
+                    return _format_today_schedule(schedule)
+        except Exception as e:
+            logger.warning("从缓存读取课表失败: %s", e)
+
+    # 回退：通过 JWC client 实时获取（需要 Redis session）
+    from services.academic.jwc_client import get_jwc_client
     auth_key = f"jwc_auth:{student_id}"
     session_value = await redis_client.get(auth_key)
     if not session_value:
         return json.dumps(
-            {"error": "教务系统未登录或会话已过期，请先在「教务」页面登录"},
+            {"error": "暂无课表缓存，请重新登录以同步课表数据"},
             ensure_ascii=False,
         )
-
     jwc = get_jwc_client(redis_client)
-
-    # 对于 RealJwcClient，get_schedule 需要的是 auth_key
-    # 对于 MockJwcClient，session_key 随意即可
-    # RealJwcClient.get_schedule 内部用 redis.get(session_key) 获取 cookie
-    # 所以这里直接传 auth_key
     schedule = await jwc.get_schedule(session_key=auth_key, semester="")
+    return _format_today_schedule(schedule)
 
-    if not schedule:
-        return json.dumps({"message": "暂无课表数据"}, ensure_ascii=False)
 
-    # 过滤今天的课程（按星期几）
-    today_weekday = datetime.now().isoweekday()  # 1=周一, 7=周日
+def _format_today_schedule(schedule: list) -> str:
+    """格式化今日课表为 JSON 字符串"""
+    today_weekday = datetime.now().isoweekday()
     today_courses = [c for c in schedule if c.get("weekday") == today_weekday]
 
     if not today_courses:
@@ -181,9 +199,7 @@ async def _exec_get_today_schedule(student_id: str, redis_client) -> str:
             ensure_ascii=False,
         )
 
-    # 按节次排序
     today_courses.sort(key=lambda c: c.get("start_section", 0))
-
     result = {
         "date": datetime.now().strftime("%Y-%m-%d"),
         "weekday": f"星期{_WEEKDAY_NAMES.get(today_weekday, str(today_weekday))}",
@@ -201,20 +217,45 @@ async def _exec_get_today_schedule(student_id: str, redis_client) -> str:
     return json.dumps(result, ensure_ascii=False)
 
 
-async def _exec_get_grades_summary(student_id: str, redis_client) -> str:
-    """查询成绩与绩点汇总"""
-    from services.academic.jwc_client import get_jwc_client
+async def _exec_get_grades_summary(student_id: str, redis_client, db: AsyncSession | None = None) -> str:
+    """查询成绩与绩点汇总（优先从数据库缓存读取）"""
+    from sqlalchemy import select as sa_select
+    from shared.models import AcademicCache, User
 
-    auth_key = f"jwc_auth:{student_id}"
-    session_value = await redis_client.get(auth_key)
-    if not session_value:
-        return json.dumps(
-            {"error": "教务系统未登录或会话已过期，请先在「教务」页面登录"},
-            ensure_ascii=False,
-        )
+    scores = None
 
-    jwc = get_jwc_client(redis_client)
-    scores = await jwc.get_scores(session_key=auth_key)
+    # 优先从 AcademicCache（数据库）读取
+    if db:
+        try:
+            user_result = await db.execute(
+                sa_select(User).where(User.student_id == student_id)
+            )
+            user = user_result.scalar_one_or_none()
+            if user:
+                cache_result = await db.execute(
+                    sa_select(AcademicCache).where(
+                        AcademicCache.user_id == user.id,
+                        AcademicCache.data_type == "scores",
+                    )
+                )
+                cache = cache_result.scalar_one_or_none()
+                if cache and cache.data:
+                    scores = cache.data if isinstance(cache.data, list) else None
+        except Exception as e:
+            logger.warning("从缓存读取成绩失败: %s", e)
+
+    if scores is None:
+        # 回退：通过 JWC client 实时获取
+        from services.academic.jwc_client import get_jwc_client
+        auth_key = f"jwc_auth:{student_id}"
+        session_value = await redis_client.get(auth_key)
+        if not session_value:
+            return json.dumps(
+                {"error": "暂无成绩缓存，请重新登录以同步成绩数据"},
+                ensure_ascii=False,
+            )
+        jwc = get_jwc_client(redis_client)
+        scores = await jwc.get_scores(session_key=auth_key)
 
     if not scores:
         return json.dumps({"message": "暂无成绩数据"}, ensure_ascii=False)

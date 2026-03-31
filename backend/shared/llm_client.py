@@ -30,7 +30,8 @@ class LLMClient:
         messages: list[dict],
         system: str = "",
         tools: list[dict] | None = None,
-        max_tokens: int = 1024,
+        tool_choice: dict | None = None,
+        max_tokens: int = 2048,
         temperature: float = 0.7,
     ) -> dict[str, Any]:
         """调用 Anthropic Messages API，返回标准化结果。"""
@@ -44,10 +45,15 @@ class LLMClient:
             payload["system"] = system
         if tools:
             payload["tools"] = tools
+            # 显式设置 tool_choice，避免模型说"我去查"而不调用工具
+            payload["tool_choice"] = tool_choice or {"type": "auto"}
 
+        logger.debug("LLM request payload keys: %s, has_tools=%s", list(payload.keys()), "tools" in payload)
         resp = await self._http.post("/v1/messages", json=payload)
         resp.raise_for_status()
         data = resp.json()
+        logger.debug("LLM raw response stop_reason=%s, content_types=%s",
+                     data.get("stop_reason"), [b.get("type") for b in data.get("content", [])])
 
         # 标准化返回
         result: dict[str, Any] = {
