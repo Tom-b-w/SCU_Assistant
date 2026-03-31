@@ -1,5 +1,6 @@
 """学习通 API 客户端 - QR登录、课程列表、作业抓取"""
 import json
+import logging
 import re
 import time
 import uuid as uuid_mod
@@ -8,9 +9,19 @@ from datetime import datetime, timezone
 
 import httpx
 
+logger = logging.getLogger(__name__)
+
 PASSPORT_BASE = "https://passport2.chaoxing.com"
 MOOC_API_BASE = "http://mooc1-api.chaoxing.com"
 MOOC_BASE = "https://mooc1.chaoxing.com"
+MOOC2_ANS_BASE = "https://mooc2-ans.chaoxing.com"
+MOBILE_LEARN_BASE = "https://mobilelearn.chaoxing.com"
+
+# 用户身份认证 cookies（跨子域共享），排除 JSESSIONID 等域专属 cookies
+_AUTH_COOKIE_KEYS = {
+    "UID", "_uid", "vc3", "cx_p_token", "p_auth_token",
+    "xxtenc", "DSSTASH_LOG", "fid", "uf", "_d",
+}
 
 HEADERS = {
     "User-Agent": (
@@ -144,11 +155,22 @@ class ChaoxingClient:
             redirect_url = data.get("url", "")
             if redirect_url:
                 try:
-                    redir_resp = await self._http.get(redirect_url)
-                    for c in redir_resp.cookies.jar:
-                        cookies[c.name] = c.value
+                    await self._http.get(redirect_url)
+                    # 捕获重定向链中所有 cookies（包括中间域的 cookies）
+                    for k, v in self._http.cookies.items():
+                        cookies[k] = v
                 except Exception:
                     pass
+            # 登录后立即建立 mooc1 session，捕获已认证的 JSESSIONID
+            try:
+                await self._http.get(
+                    f"{MOOC_BASE}/",
+                    headers={"Referer": redirect_url or f"{PASSPORT_BASE}/login"},
+                )
+                for k, v in self._http.cookies.items():
+                    cookies[k] = v
+            except Exception:
+                pass
             return {
                 "status": 2,
                 "cookies": cookies,
@@ -194,51 +216,149 @@ class ChaoxingClient:
         return courses
 
     async def get_course_works(
-        self, cookies: dict, course_id: str, class_id: str
+        self, course_id: str, class_id: str, cookies: dict
     ) -> list[ChaoxingWork]:
-        """获取某门课程的作业列表（含截止日期）"""
-        works: list[ChaoxingWork] = []
-        resp = await self._http.get(
-            f"{MOOC_BASE}/api/work",
-            params={
-                "buildRecordByCourseId": course_id,
-                "classId": class_id,
-                "view": "json",
-            },
-            cookies=cookies,
-        )
-        if resp.status_code == 200:
-            try:
+        """
+        获取某门课程的作业列表。多端点依次尝试：
+        1. mobilelearn API（移动端，不依赖 mooc JSESSIONID）
+        2. mooc1-api（API 服务器）
+        3. mooc1（需要 mooc session）
+        """
+        # 尝试 1: mobilelearn 移动端 API
+        try:
+            params: dict = {"courseId": course_id, "classId": class_id, "api": "1"}
+            fid = cookies.get("fid", "")
+            if fid:
+                params["fid"] = fid
+            resp = await self._http.get(
+                f"{MOBILE_LEARN_BASE}/v2/apis/work/listWorksByCourse",
+                params=params,
+                cookies=cookies,
+                headers={
+                    "Referer": f"{MOBILE_LEARN_BASE}/",
+                    "X-Requested-With": "XMLHttpRequest",
+                },
+            )
+            logger.info("mobilelearn work status=%s body=%r", resp.status_code, resp.text[:300])
+            if resp.status_code == 200:
                 data = resp.json()
-                for item in data.get("data", []):
-                    deadline_ts = item.get("deadline", 0)
-                    deadline_str = ""
-                    if deadline_ts and deadline_ts > 0:
-                        deadline_str = datetime.fromtimestamp(
-                            deadline_ts / 1000, tz=timezone.utc
-                        ).isoformat()
+                items = data.get("workList") or data.get("data") or []
+                if items:
+                    return self._parse_work_items(items, mobile=True)
+        except Exception as e:
+            logger.info("mobilelearn work exception: %s", e)
 
-                    works.append(ChaoxingWork(
-                        work_id=str(item.get("workId", "")),
-                        course_name=item.get("courseName", ""),
-                        title=item.get("title", "未命名作业"),
-                        deadline=deadline_str,
-                        status=item.get("status", "未知"),
-                    ))
-            except (json.JSONDecodeError, KeyError):
-                pass
+        # 尝试 2: mooc1-api
+        try:
+            resp = await self._http.get(
+                f"{MOOC_API_BASE}/api/work",
+                params={"buildRecordByCourseId": course_id, "classId": class_id, "view": "json"},
+                cookies=cookies,
+                headers={"Referer": f"{MOOC_BASE}/visit/interaction?clazzId={class_id}&type=1"},
+            )
+            logger.info("mooc1-api work status=%s body=%r", resp.status_code, resp.text[:300])
+            if resp.status_code == 200:
+                data = resp.json()
+                items = data.get("data") or []
+                if items:
+                    return self._parse_work_items(items)
+        except Exception as e:
+            logger.info("mooc1-api work exception: %s", e)
+
+        # 尝试 3: mooc1（需要 jar 中已认证的 JSESSIONID）
+        try:
+            resp = await self._http.get(
+                f"{MOOC_BASE}/api/work",
+                params={"buildRecordByCourseId": course_id, "classId": class_id, "view": "json"},
+                headers={
+                    "Referer": f"{MOOC_BASE}/visit/interaction?clazzId={class_id}&type=1",
+                    "X-Requested-With": "XMLHttpRequest",
+                },
+            )
+            logger.info("mooc1 work status=%s body=%r", resp.status_code, resp.text[:300])
+            if resp.status_code == 200:
+                data = resp.json()
+                items = data.get("data") or []
+                if items:
+                    return self._parse_work_items(items)
+        except Exception as e:
+            logger.info("mooc1 work exception: %s", e)
+
+        return []
+
+    def _parse_work_items(self, items: list, mobile: bool = False) -> list[ChaoxingWork]:
+        """将 API 返回的作业条目解析为 ChaoxingWork 列表"""
+        works = []
+        for item in items:
+            if mobile:
+                # 移动端字段名不同
+                deadline_raw = item.get("endTime", "") or item.get("deadline", "")
+                deadline_str = ""
+                if deadline_raw:
+                    try:
+                        ts = int(str(deadline_raw))
+                        deadline_str = datetime.fromtimestamp(ts / 1000, tz=timezone.utc).isoformat()
+                    except (ValueError, TypeError):
+                        deadline_str = str(deadline_raw)
+                works.append(ChaoxingWork(
+                    work_id=str(item.get("workId", "")),
+                    course_name=item.get("courseName", ""),
+                    title=item.get("workName", item.get("title", "未命名作业")),
+                    deadline=deadline_str,
+                    status=item.get("statusName", item.get("status", "未知")),
+                ))
+            else:
+                deadline_ts = item.get("deadline", 0)
+                deadline_str = ""
+                if deadline_ts and deadline_ts > 0:
+                    deadline_str = datetime.fromtimestamp(
+                        deadline_ts / 1000, tz=timezone.utc
+                    ).isoformat()
+                works.append(ChaoxingWork(
+                    work_id=str(item.get("workId", "")),
+                    course_name=item.get("courseName", ""),
+                    title=item.get("title", "未命名作业"),
+                    deadline=deadline_str,
+                    status=item.get("status", "未知"),
+                ))
         return works
+
+    async def _establish_mooc_session(self, cookies: dict) -> None:
+        """
+        将用户身份 cookies 写入 jar（.chaoxing.com），
+        如果 cookies 中存有之前登录时捕获的 JSESSIONID，则也恢复到 mooc1 域。
+        再访问 mooc1 主页触发 SSO 认证，让服务器颁发（或确认）mooc1 JSESSIONID。
+        """
+        for name, value in cookies.items():
+            if name in _AUTH_COOKIE_KEYS:
+                self._http.cookies.set(name, value, domain=".chaoxing.com")
+        # 若登录时保存了 mooc1 JSESSIONID，恢复到 mooc1 域
+        if "JSESSIONID" in cookies:
+            self._http.cookies.set("JSESSIONID", cookies["JSESSIONID"],
+                                   domain="mooc1.chaoxing.com")
+        try:
+            await self._http.get(
+                f"{MOOC_BASE}/",
+                headers={
+                    "Referer": "https://i.chaoxing.com/base",
+                    "Accept": "text/html,application/xhtml+xml,*/*;q=0.8",
+                },
+            )
+        except Exception:
+            pass
 
     async def get_all_works(self, cookies: dict) -> list[ChaoxingWork]:
         """获取所有课程的所有作业"""
         courses = await self.get_courses(cookies)
+        # 建立 mooc1 域 session（仅用身份 cookies，跳过 JSESSIONID）
+        await self._establish_mooc_session(cookies)
         all_works: list[ChaoxingWork] = []
         for course in courses:
             if not course.course_id:
                 continue
             try:
                 works = await self.get_course_works(
-                    cookies, course.course_id, course.class_id
+                    course.course_id, course.class_id, cookies
                 )
                 for w in works:
                     if not w.course_name:

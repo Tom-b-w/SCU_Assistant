@@ -214,10 +214,6 @@ class ChaoxingService:
                 skipped += 1
                 continue
 
-            if due < now:
-                skipped += 1
-                continue
-
             title = f"[学习通] {work.title}"
             if (title, work.course_name) in existing_titles:
                 skipped += 1

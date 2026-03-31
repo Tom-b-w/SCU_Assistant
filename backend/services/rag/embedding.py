@@ -9,11 +9,11 @@ logger = logging.getLogger(__name__)
 
 async def get_embeddings(texts: list[str]) -> list[list[float]]:
     """为文本列表生成 embedding 向量。"""
-    api_key = settings.embedding_api_key or settings.llm_api_key
+    auth_token = settings.embedding_api_key or settings.llm_auth_token
     base_url = settings.embedding_base_url or settings.llm_base_url
-    if not api_key:
+    if not auth_token:
         raise RuntimeError("Embedding API key 未配置")
-    client = LLMClient(api_key=api_key, base_url=base_url, model=settings.embedding_model)
+    client = LLMClient(api_key="", base_url=base_url, model=settings.embedding_model, auth_token=auth_token)
     try:
         all_embeddings: list[list[float]] = []
         batch_size = 20

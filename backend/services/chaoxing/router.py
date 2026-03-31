@@ -31,7 +31,7 @@ async def create_qr_code(
     redis=Depends(get_redis),
     svc: ChaoxingService = Depends(get_service),
 ):
-    """创建学习通扫码登录二维码"""
+    """创建学习通扫码登录二维码，返回 base64 图片"""
     result = await svc.start_qr_login(redis)
     return QRCodeResponse(**result)
 
