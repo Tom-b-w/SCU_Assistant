@@ -3,13 +3,13 @@
 import { useState, useEffect, useCallback } from "react";
 import {
   Bell,
-  Loader2,
   ExternalLink,
   Calendar,
   RefreshCw,
   Inbox,
 } from "lucide-react";
 import { getNotifications, type NotificationItem } from "@/lib/notification";
+import { Skeleton } from "@/components/ui/skeleton";
 
 const SOURCE_FILTERS = [
   { key: undefined as string | undefined, label: "全部" },
@@ -88,8 +88,21 @@ export default function NotificationPage() {
 
       {/* Notification List */}
       {loading ? (
-        <div className="flex h-40 items-center justify-center">
-          <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+        <div className="space-y-2">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <div key={i} className="rounded-xl bg-white p-4 shadow-sm ring-1 ring-black/[0.04] dark:bg-gray-900 dark:ring-white/[0.06]">
+              <div className="flex items-start gap-3">
+                <div className="flex-1 space-y-2">
+                  <div className="flex items-center gap-2">
+                    <Skeleton className="h-4 w-48" />
+                    <Skeleton className="h-4 w-12 rounded-full" />
+                  </div>
+                  <Skeleton className="h-3 w-full" />
+                  <Skeleton className="h-3 w-24" />
+                </div>
+              </div>
+            </div>
+          ))}
         </div>
       ) : notifications.length === 0 ? (
         <div className="rounded-xl bg-white p-12 text-center shadow-sm ring-1 ring-black/[0.04] dark:bg-gray-900 dark:ring-white/[0.06]">
@@ -97,7 +110,7 @@ export default function NotificationPage() {
           <p className="mt-4 text-muted-foreground">暂无通知</p>
         </div>
       ) : (
-        <div className="space-y-2">
+        <div className="stagger-children space-y-2">
           {notifications.map((n) => {
             const badge = SOURCE_BADGE[n.source] || "bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300";
             return (

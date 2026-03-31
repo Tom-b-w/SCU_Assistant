@@ -14,8 +14,8 @@ config = context.config
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
-# Use sync driver for migrations (asyncpg -> psycopg2)
-sync_url = settings.database_url.replace("+asyncpg", "+psycopg2")
+# Use sync driver for migrations
+sync_url = settings.database_url.replace("+asyncpg", "+psycopg2").replace("+aiosqlite", "")
 config.set_main_option("sqlalchemy.url", sync_url)
 
 target_metadata = Base.metadata

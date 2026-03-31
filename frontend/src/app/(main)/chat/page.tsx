@@ -176,13 +176,17 @@ function ChatPageInner() {
             ))}
 
             {isTyping && (
-              <div className="flex gap-3">
-                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-purple-500 to-blue-500 text-white">
+              <div className="flex gap-3 animate-slide-up">
+                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-purple-500 via-blue-500 to-cyan-500 text-white shadow-sm shadow-purple-500/20">
                   <Sparkles className="h-4 w-4" />
                 </div>
-                <div className="flex items-center gap-1.5 rounded-2xl bg-muted/50 px-4 py-3">
-                  <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
-                  <span className="text-sm text-muted-foreground">思考中...</span>
+                <div className="flex items-center gap-2 rounded-2xl bg-white px-4 py-3 ring-1 ring-black/[0.04] shadow-sm dark:bg-gray-900 dark:ring-white/[0.06]">
+                  <div className="flex items-center gap-1">
+                    <span className="typing-dot h-2 w-2 rounded-full bg-purple-400" />
+                    <span className="typing-dot h-2 w-2 rounded-full bg-blue-400" />
+                    <span className="typing-dot h-2 w-2 rounded-full bg-cyan-400" />
+                  </div>
+                  <span className="text-xs text-muted-foreground">思考中</span>
                 </div>
               </div>
             )}

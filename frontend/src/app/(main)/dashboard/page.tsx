@@ -7,11 +7,11 @@ import {
   BookOpen,
   Timer,
   CloudSun,
-  Loader2,
   Sparkles,
 } from "lucide-react";
 import { getBriefing, type BriefingData } from "@/lib/briefing";
 import { getWeather, type Weather } from "@/lib/weather";
+import { BriefingSkeleton } from "@/components/ui/skeleton-cards";
 
 export default function DashboardPage() {
   const [briefing, setBriefing] = useState<BriefingData | null>(null);
@@ -38,11 +38,7 @@ export default function DashboardPage() {
   }, []);
 
   if (loading) {
-    return (
-      <div className="flex h-64 items-center justify-center">
-        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-      </div>
-    );
+    return <BriefingSkeleton />;
   }
 
   return (

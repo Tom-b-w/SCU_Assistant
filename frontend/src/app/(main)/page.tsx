@@ -10,10 +10,11 @@ import {
   CloudSun,
   GraduationCap,
   ArrowRight,
-  Loader2,
   AlertCircle,
   Target,
   Award,
+  Newspaper,
+  Loader2,
 } from "lucide-react";
 import Link from "next/link";
 import { useAuthStore } from "@/stores/auth-store";
@@ -25,12 +26,15 @@ import {
   type Score,
   type PlanCompletion,
 } from "@/lib/academic";
+import { getBriefing, type BriefingData } from "@/lib/briefing";
+import {
+  QuickStatsSkeleton,
+  TodayCourseSkeleton,
+  CreditProgressSkeleton,
+  ScoresTableSkeleton,
+} from "@/components/ui/skeleton-cards";
 
 const WEEKDAY_NAMES = ["", "一", "二", "三", "四", "五", "六", "日"];
-const SECTION_COLORS = [
-  "bg-blue-500", "bg-emerald-500", "bg-purple-500", "bg-orange-500",
-  "bg-pink-500", "bg-cyan-500", "bg-amber-500", "bg-indigo-500",
-];
 
 const COURSE_ACCENT_GRADIENTS = [
   "from-blue-400 to-blue-600",
@@ -61,6 +65,8 @@ function getScoreBadge(score: string) {
   return { bg: "bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-400", label: score };
 }
 
+const SCORES_PREVIEW_COUNT = 8;
+
 export default function DashboardPage() {
   const user = useAuthStore((state) => state.user);
   const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
@@ -71,6 +77,7 @@ export default function DashboardPage() {
   const [courses, setCourses] = useState<Course[]>([]);
   const [scores, setScores] = useState<Score[]>([]);
   const [planCompletion, setPlanCompletion] = useState<PlanCompletion | null>(null);
+  const [briefing, setBriefing] = useState<BriefingData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
@@ -81,20 +88,24 @@ export default function DashboardPage() {
       setLoading(true);
       setError("");
       try {
-        const [scheduleData, scoresData, planData] = await Promise.all([
+        const [scheduleData, scoresData, planData, briefingData] = await Promise.allSettled([
           getSchedule(),
           getScores(),
           getPlanCompletion(),
+          getBriefing(),
         ]);
-        setCourses(scheduleData.courses);
-        setScores(scoresData.scores);
-        setPlanCompletion(planData);
-      } catch (err: unknown) {
-        const axiosErr = err as { response?: { data?: { error?: { code?: string } } } };
-        if (axiosErr?.response?.data?.error?.code === "SESSION_EXPIRED") {
-          // 拦截器会自动跳转登录页，这里不需要额外处理
-          return;
+        if (scheduleData.status === "fulfilled") setCourses(scheduleData.value.courses);
+        if (scoresData.status === "fulfilled") setScores(scoresData.value.scores);
+        if (planData.status === "fulfilled") setPlanCompletion(planData.value);
+        if (briefingData.status === "fulfilled") setBriefing(briefingData.value);
+
+        // Check if academic data failed (briefing failure is non-critical)
+        if (scheduleData.status === "rejected") {
+          const err = scheduleData.reason as { response?: { data?: { error?: { code?: string } } } };
+          if (err?.response?.data?.error?.code === "SESSION_EXPIRED") return;
+          setError("获取教务数据失败，请稍后重试");
         }
+      } catch {
         setError("获取教务数据失败，请稍后重试");
       } finally {
         setLoading(false);
@@ -141,9 +152,8 @@ export default function DashboardPage() {
 
   return (
     <div className="mx-auto max-w-6xl space-y-6">
-      {/* Welcome Section - animated gradient with mesh overlay */}
+      {/* Welcome Section */}
       <div className="animate-gradient relative overflow-hidden rounded-2xl bg-gradient-to-br from-[#C41230] via-[#E8173A] to-[#9E0E26] p-6 text-white shadow-lg shadow-[#C41230]/20 md:p-8">
-        {/* Mesh grid pattern overlay */}
         <div
           className="pointer-events-none absolute inset-0 opacity-[0.07]"
           style={{
@@ -155,7 +165,11 @@ export default function DashboardPage() {
         <div className="relative z-10">
           <div className="flex items-center gap-2 text-white/70">
             <CloudSun className="h-4 w-4" />
-            <span className="text-sm">成都 · 多云</span>
+            <span className="text-sm">
+              {briefing?.data?.weather
+                ? `成都 · ${(briefing.data.weather as { condition?: string }).condition ?? ""}  ${(briefing.data.weather as { temperature?: number }).temperature ?? ""}°C`
+                : "成都 · 加载中..."}
+            </span>
           </div>
           <h2 className="mt-2 text-2xl font-bold md:text-3xl">
             {greeting}，{user?.name || "同学"}
@@ -171,41 +185,69 @@ export default function DashboardPage() {
             问 AI：今天我需要注意什么？
           </Link>
         </div>
-        {/* Decorative blurred circles */}
         <div className="absolute -right-10 -top-10 h-40 w-40 rounded-full bg-white/10 blur-2xl" />
         <div className="absolute -bottom-5 right-20 h-24 w-24 rounded-full bg-[#D4A843]/20 blur-xl" />
         <div className="absolute -left-8 bottom-0 h-32 w-32 rounded-full bg-white/5 blur-2xl" />
         <GraduationCap className="absolute right-6 top-6 h-20 w-20 text-white/10 md:h-28 md:w-28" />
       </div>
 
-      {/* Quick Stats - gradient icon backgrounds with hover animations */}
-      <div className="grid grid-cols-2 gap-3 md:grid-cols-4 md:gap-4">
-        {quickStats.map((stat) => {
-          const Icon = stat.icon;
-          return (
-            <Link
-              key={stat.label}
-              href={stat.href}
-              className={`group relative overflow-hidden rounded-xl bg-white p-4 shadow-sm ring-1 ring-black/[0.04] transition-all duration-300 hover:-translate-y-1 hover:shadow-lg hover:shadow-black/5 dark:bg-gray-900 dark:ring-white/[0.06] dark:hover:shadow-black/20`}
-            >
-              {/* Subtle background glow on hover */}
-              <div className={`absolute -right-4 -top-4 h-20 w-20 rounded-full bg-gradient-to-br ${stat.color} opacity-0 blur-2xl transition-opacity duration-300 group-hover:opacity-10`} />
-              <div className={`relative inline-flex rounded-xl bg-gradient-to-br ${stat.iconBg} p-2.5 text-white shadow-md ${stat.shadowColor} transition-transform duration-300 group-hover:scale-110`}>
-                <Icon className="h-4 w-4" />
-              </div>
-              <p className="mt-3 text-2xl font-bold tracking-tight">{stat.value}</p>
-              <p className="text-xs text-muted-foreground">{stat.label}</p>
-              <ArrowRight className="absolute bottom-4 right-4 h-4 w-4 text-muted-foreground/30 transition-all duration-300 group-hover:translate-x-1 group-hover:text-muted-foreground/60" />
-            </Link>
-          );
-        })}
-      </div>
+      {/* Quick Stats */}
+      {loading ? (
+        <QuickStatsSkeleton />
+      ) : (
+        <div className="grid grid-cols-2 gap-3 md:grid-cols-4 md:gap-4">
+          {quickStats.map((stat) => {
+            const Icon = stat.icon;
+            return (
+              <Link
+                key={stat.label}
+                href={stat.href}
+                className="group relative overflow-hidden rounded-xl bg-white p-4 shadow-sm ring-1 ring-black/[0.04] transition-all duration-300 hover:-translate-y-1 hover:shadow-lg hover:shadow-black/5 dark:bg-gray-900 dark:ring-white/[0.06] dark:hover:shadow-black/20"
+              >
+                <div className={`absolute -right-4 -top-4 h-20 w-20 rounded-full bg-gradient-to-br ${stat.color} opacity-0 blur-2xl transition-opacity duration-300 group-hover:opacity-10`} />
+                <div className={`relative inline-flex rounded-xl bg-gradient-to-br ${stat.iconBg} p-2.5 text-white shadow-md ${stat.shadowColor} transition-transform duration-300 group-hover:scale-110`}>
+                  <Icon className="h-4 w-4" />
+                </div>
+                <p className="mt-3 text-2xl font-bold tracking-tight">{stat.value}</p>
+                <p className="text-xs text-muted-foreground">{stat.label}</p>
+                <ArrowRight className="absolute bottom-4 right-4 h-4 w-4 text-muted-foreground/30 transition-all duration-300 group-hover:translate-x-1 group-hover:text-muted-foreground/60" />
+              </Link>
+            );
+          })}
+        </div>
+      )}
 
       {error && (
         <div className="flex items-center gap-2 rounded-lg bg-red-500/10 px-4 py-3 text-sm text-red-600 ring-1 ring-red-500/20 dark:text-red-400">
           <AlertCircle className="h-4 w-4 shrink-0" />
           {error}
         </div>
+      )}
+
+      {/* Morning Briefing Summary (if available) */}
+      {!loading && briefing && (
+        <Link
+          href="/dashboard"
+          className="group relative block overflow-hidden rounded-xl bg-gradient-to-r from-teal-500/[0.06] via-emerald-500/[0.04] to-teal-500/[0.06] p-5 ring-1 ring-teal-500/15 transition-all duration-300 hover:from-teal-500/10 hover:via-emerald-500/8 hover:to-teal-500/10 hover:shadow-md hover:shadow-teal-500/5 hover:ring-teal-500/25"
+        >
+          <div className="flex items-start gap-4">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-teal-500 to-emerald-600 text-white shadow-md shadow-teal-500/20 transition-transform duration-300 group-hover:scale-110">
+              <Newspaper className="h-5 w-5" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2">
+                <p className="font-semibold text-foreground">今日简报</p>
+                <span className="rounded-full bg-teal-500/10 px-2 py-0.5 text-[10px] font-medium text-teal-600 dark:text-teal-400">
+                  {briefing.weekday}
+                </span>
+              </div>
+              <p className="mt-1 text-sm text-muted-foreground line-clamp-2">
+                {briefing.briefing.split("\n")[0]}
+              </p>
+            </div>
+            <ArrowRight className="mt-1 h-4 w-4 shrink-0 text-muted-foreground/40 transition-all duration-300 group-hover:translate-x-1 group-hover:text-teal-500" />
+          </div>
+        </Link>
       )}
 
       {/* Main content grid */}
@@ -223,12 +265,9 @@ export default function DashboardPage() {
               完整课表
             </Link>
           </div>
-          <div className="mt-4 space-y-2">
+          <div className="mt-4">
             {loading ? (
-              <div className="flex items-center justify-center py-8 text-muted-foreground">
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                正在从教务系统获取...
-              </div>
+              <TodayCourseSkeleton />
             ) : todayCourses.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-10 text-center">
                 <div className="mb-3 flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-emerald-50 to-green-50 dark:from-emerald-900/20 dark:to-green-900/20">
@@ -238,29 +277,31 @@ export default function DashboardPage() {
                 <p className="mt-0.5 text-xs text-muted-foreground/60">好好享受自由时光吧</p>
               </div>
             ) : (
-              todayCourses
-                .sort((a, b) => a.start_section - b.start_section)
-                .map((item, i) => (
-                  <div key={i} className="group flex items-center gap-3 rounded-xl border border-transparent bg-muted/30 p-3 transition-all duration-200 hover:border-black/[0.04] hover:bg-muted/50 hover:shadow-sm dark:hover:border-white/[0.06]">
-                    <div className={`h-full min-h-[2.5rem] w-1.5 rounded-full bg-gradient-to-b ${COURSE_ACCENT_GRADIENTS[i % COURSE_ACCENT_GRADIENTS.length]}`} />
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium truncate">{item.course_name}</p>
-                      <p className="text-xs text-muted-foreground">{item.location} · {item.teacher}</p>
-                    </div>
-                    <div className="flex flex-col items-end gap-0.5 text-xs text-muted-foreground">
-                      <div className="flex items-center gap-1 font-medium text-foreground/70">
-                        <Clock className="h-3 w-3" />
-                        {sectionToTime(item.start_section)}
+              <div className="space-y-2">
+                {todayCourses
+                  .sort((a, b) => a.start_section - b.start_section)
+                  .map((item, i) => (
+                    <div key={i} className="group flex items-center gap-3 rounded-xl border border-transparent bg-muted/30 p-3 transition-all duration-200 hover:border-black/[0.04] hover:bg-muted/50 hover:shadow-sm dark:hover:border-white/[0.06]">
+                      <div className={`h-full min-h-[2.5rem] w-1.5 rounded-full bg-gradient-to-b ${COURSE_ACCENT_GRADIENTS[i % COURSE_ACCENT_GRADIENTS.length]}`} />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium truncate">{item.course_name}</p>
+                        <p className="text-xs text-muted-foreground">{item.location} · {item.teacher}</p>
                       </div>
-                      <span className="text-[0.65rem]">第{item.start_section}-{item.end_section}节</span>
+                      <div className="flex flex-col items-end gap-0.5 text-xs text-muted-foreground">
+                        <div className="flex items-center gap-1 font-medium text-foreground/70">
+                          <Clock className="h-3 w-3" />
+                          {sectionToTime(item.start_section)}
+                        </div>
+                        <span className="text-[0.65rem]">第{item.start_section}-{item.end_section}节</span>
+                      </div>
                     </div>
-                  </div>
-                ))
+                  ))}
+              </div>
             )}
           </div>
         </div>
 
-        {/* Credit Progress (已修学分统计) */}
+        {/* Credit Progress */}
         <div className="rounded-xl bg-white p-5 shadow-sm ring-1 ring-black/[0.04] dark:bg-gray-900 dark:ring-white/[0.06]">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
@@ -275,13 +316,9 @@ export default function DashboardPage() {
           </div>
           <div className="mt-4">
             {loading ? (
-              <div className="flex items-center justify-center py-8 text-muted-foreground">
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                正在从教务系统获取...
-              </div>
+              <CreditProgressSkeleton />
             ) : planCompletion ? (
               <div className="space-y-4">
-                {/* 总学分 */}
                 <div>
                   <div className="flex justify-between text-sm mb-2">
                     <span className="text-muted-foreground">已修总学分</span>
@@ -299,8 +336,6 @@ export default function DashboardPage() {
                     </div>
                   )}
                 </div>
-
-                {/* 分类统计 */}
                 {planCompletion.categories.map((cat, i) => {
                   const barGradients = [
                     "from-blue-400 via-blue-500 to-indigo-500",
@@ -316,7 +351,6 @@ export default function DashboardPage() {
                     "rgba(236, 72, 153, 0.3)",
                     "rgba(6, 182, 212, 0.3)",
                   ];
-                  // 无要求学分时，用占总学分的比例来展示柱状条
                   const barWidth = planCompletion.earned_credits > 0
                     ? Math.round((cat.earned_credits / planCompletion.earned_credits) * 100)
                     : 0;
@@ -360,20 +394,22 @@ export default function DashboardPage() {
               <span className="rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground">共 {scores.length} 门</span>
             )}
           </div>
+          {!loading && scores.length > SCORES_PREVIEW_COUNT && (
+            <Link href="/academic/scores" className="text-xs text-primary hover:underline">
+              查看全部
+            </Link>
+          )}
         </div>
         <div className="mt-4">
           {loading ? (
-            <div className="flex items-center justify-center py-8 text-muted-foreground">
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              正在从教务系统获取...
-            </div>
+            <ScoresTableSkeleton />
           ) : scores.length === 0 ? (
             <div className="py-8 text-center text-sm text-muted-foreground">
               暂无成绩数据
             </div>
           ) : (
             <div className="space-y-0.5">
-              {/* 表头 */}
+              {/* Table header */}
               <div className="grid grid-cols-12 gap-2 rounded-lg bg-muted/60 px-3 py-2.5 text-xs font-semibold text-muted-foreground dark:bg-muted/30">
                 <span className="col-span-4">课程名称</span>
                 <span className="col-span-2">学期</span>
@@ -382,7 +418,7 @@ export default function DashboardPage() {
                 <span className="col-span-1 text-center">绩点</span>
                 <span className="col-span-2 text-right">成绩</span>
               </div>
-              {scores.map((item, i) => {
+              {scores.slice(0, SCORES_PREVIEW_COUNT).map((item, i) => {
                 const badge = getScoreBadge(item.score);
                 return (
                   <div
@@ -407,17 +443,26 @@ export default function DashboardPage() {
                   </div>
                 );
               })}
+              {/* Show "view more" hint when truncated */}
+              {scores.length > SCORES_PREVIEW_COUNT && (
+                <Link
+                  href="/academic/scores"
+                  className="flex items-center justify-center gap-1 rounded-lg py-2.5 text-xs text-muted-foreground transition-colors hover:bg-muted/50 hover:text-foreground"
+                >
+                  还有 {scores.length - SCORES_PREVIEW_COUNT} 门课程
+                  <ArrowRight className="h-3 w-3" />
+                </Link>
+              )}
             </div>
           )}
         </div>
       </div>
 
-      {/* AI Suggestion Banner - with animated glow border */}
+      {/* AI Suggestion Banner */}
       <Link
         href="/chat"
         className="animate-gradient group relative flex items-center gap-4 overflow-hidden rounded-xl bg-gradient-to-r from-purple-500/5 via-blue-500/5 to-cyan-500/5 p-5 ring-1 ring-purple-500/20 transition-all duration-300 hover:from-purple-500/10 hover:via-blue-500/10 hover:to-cyan-500/10 hover:shadow-lg hover:shadow-purple-500/10 hover:ring-purple-500/30"
       >
-        {/* Animated glow effect behind the card */}
         <div className="animate-gradient pointer-events-none absolute inset-0 -z-10 bg-gradient-to-r from-purple-500/10 via-blue-500/10 to-cyan-500/10 opacity-0 blur-xl transition-opacity duration-500 group-hover:opacity-100" />
         <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-purple-500 via-violet-500 to-blue-500 text-white shadow-lg shadow-purple-500/25 transition-transform duration-300 group-hover:scale-110">
           <Sparkles className="h-5 w-5" />

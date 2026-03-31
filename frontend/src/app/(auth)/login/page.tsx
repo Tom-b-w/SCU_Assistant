@@ -64,7 +64,7 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="mx-auto flex w-full max-w-[420px] flex-col items-center">
+    <div className="mx-auto flex w-full max-w-[420px] flex-col items-center animate-scale-in">
       {/* Logo & Branding */}
       <div className="mb-8 flex flex-col items-center text-white">
         <div className="mb-4 flex h-20 w-20 items-center justify-center rounded-2xl bg-white/10 shadow-2xl backdrop-blur-sm ring-1 ring-white/20">

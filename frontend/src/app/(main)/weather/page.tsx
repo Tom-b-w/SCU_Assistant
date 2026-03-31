@@ -7,11 +7,11 @@ import {
   Droplets,
   Wind,
   Shirt,
-  Loader2,
   RefreshCw,
   Eye,
 } from "lucide-react";
 import { getWeather, type Weather } from "@/lib/weather";
+import { WeatherSkeleton } from "@/components/ui/skeleton-cards";
 
 export default function WeatherPage() {
   const [weather, setWeather] = useState<Weather | null>(null);
@@ -36,11 +36,7 @@ export default function WeatherPage() {
   }, []);
 
   if (loading) {
-    return (
-      <div className="flex h-64 items-center justify-center">
-        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-      </div>
-    );
+    return <WeatherSkeleton />;
   }
 
   if (error) {

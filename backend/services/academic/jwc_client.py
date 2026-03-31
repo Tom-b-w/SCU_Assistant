@@ -747,6 +747,9 @@ class RealJwcClient(BaseJwcClient):
 class MockJwcClient(BaseJwcClient):
     """开发/测试环境模拟客户端"""
 
+    def __init__(self, redis_client=None):
+        self.redis = redis_client
+
     async def start_session(self) -> tuple[str, bytes]:
         captcha_bytes = self._generate_captcha_image()
         return f"mock_session:{uuid.uuid4().hex}", captcha_bytes
@@ -847,6 +850,10 @@ class MockJwcClient(BaseJwcClient):
     ) -> dict | None:
         if len(student_id) < 5:
             return None
+        # 存储 mock 认证 session 到 Redis（让 fetch_and_cache_all 可以找到它）
+        if self.redis:
+            auth_key = f"jwc_auth:{student_id}"
+            await self.redis.set(auth_key, "mock_auth_token", ex=1800)
         return {
             "student_id": student_id,
             "name": f"学生{student_id[-4:]}",
@@ -857,37 +864,113 @@ class MockJwcClient(BaseJwcClient):
 
     async def get_schedule(self, session_key: str, semester: str) -> list[dict]:
         return [
-            {"course_name": "高等数学 (A)", "teacher": "张教授", "location": "一教 B305",
-             "weekday": 1, "start_section": 1, "end_section": 2, "weeks": "1-16"},
-            {"course_name": "数据结构", "teacher": "李教授", "location": "二教 C201",
-             "weekday": 1, "start_section": 3, "end_section": 4, "weeks": "1-16"},
-            {"course_name": "计算机网络", "teacher": "王教授", "location": "三教 A108",
-             "weekday": 3, "start_section": 5, "end_section": 6, "weeks": "1-16"},
-            {"course_name": "操作系统", "teacher": "赵教授", "location": "基教 A301",
-             "weekday": 4, "start_section": 1, "end_section": 2, "weeks": "1-16"},
-            {"course_name": "软件工程导论", "teacher": "刘教授", "location": "基教 B201",
-             "weekday": 5, "start_section": 3, "end_section": 4, "weeks": "1-16"},
+            # 周一
+            {"course_name": "高等数学 (A)", "teacher": "张伟教授", "location": "一教 B305",
+             "weekday": 1, "start_section": 1, "end_section": 2, "weeks": "1-16周",
+             "course_type": "必修", "campus": "望江", "is_scheduled": True},
+            {"course_name": "数据结构与算法", "teacher": "李明教授", "location": "二教 C201",
+             "weekday": 1, "start_section": 3, "end_section": 4, "weeks": "1-16周",
+             "course_type": "必修", "campus": "望江", "is_scheduled": True},
+            {"course_name": "形势与政策", "teacher": "陈思远教授", "location": "基教 D101",
+             "weekday": 1, "start_section": 7, "end_section": 8, "weeks": "1-8周",
+             "course_type": "必修", "campus": "望江", "is_scheduled": True},
+            # 周二
+            {"course_name": "线性代数", "teacher": "刘芳教授", "location": "一教 A201",
+             "weekday": 2, "start_section": 1, "end_section": 2, "weeks": "1-16周",
+             "course_type": "必修", "campus": "望江", "is_scheduled": True},
+            {"course_name": "大学英语（四）", "teacher": "王晓英教授", "location": "外语楼 302",
+             "weekday": 2, "start_section": 3, "end_section": 4, "weeks": "1-16周",
+             "course_type": "必修", "campus": "望江", "is_scheduled": True},
+            {"course_name": "体育（田径）", "teacher": "赵强教授", "location": "田径场",
+             "weekday": 2, "start_section": 9, "end_section": 10, "weeks": "1-16周",
+             "course_type": "必修", "campus": "望江", "is_scheduled": True},
+            # 周三
+            {"course_name": "计算机网络", "teacher": "王建国教授", "location": "三教 A108",
+             "weekday": 3, "start_section": 1, "end_section": 2, "weeks": "1-16周",
+             "course_type": "必修", "campus": "望江", "is_scheduled": True},
+            {"course_name": "数字逻辑", "teacher": "孙海涛教授", "location": "江安 A区 201",
+             "weekday": 3, "start_section": 5, "end_section": 6, "weeks": "1-16周",
+             "course_type": "必修", "campus": "望江", "is_scheduled": True},
+            # 周四
+            {"course_name": "操作系统原理", "teacher": "赵志远教授", "location": "基教 A301",
+             "weekday": 4, "start_section": 1, "end_section": 2, "weeks": "1-16周",
+             "course_type": "必修", "campus": "望江", "is_scheduled": True},
+            {"course_name": "高等数学 (A)", "teacher": "张伟教授", "location": "一教 B305",
+             "weekday": 4, "start_section": 3, "end_section": 4, "weeks": "1-16周",
+             "course_type": "必修", "campus": "望江", "is_scheduled": True},
+            {"course_name": "机器学习导论", "teacher": "黄明亮教授", "location": "信息学院 C302",
+             "weekday": 4, "start_section": 7, "end_section": 8, "weeks": "9-16周",
+             "course_type": "选修", "campus": "望江", "is_scheduled": True},
+            # 周五
+            {"course_name": "软件工程", "teacher": "刘国强教授", "location": "基教 B201",
+             "weekday": 5, "start_section": 1, "end_section": 2, "weeks": "1-16周",
+             "course_type": "必修", "campus": "望江", "is_scheduled": True},
+            {"course_name": "计算机网络", "teacher": "王建国教授", "location": "三教 A108",
+             "weekday": 5, "start_section": 3, "end_section": 4, "weeks": "1-16周",
+             "course_type": "必修", "campus": "望江", "is_scheduled": True},
+            {"course_name": "Python 程序设计", "teacher": "陈凯教授", "location": "计算机楼 机房301",
+             "weekday": 5, "start_section": 5, "end_section": 6, "weeks": "1-12周",
+             "course_type": "选修", "campus": "望江", "is_scheduled": True},
         ]
 
     async def get_scores(self, session_key: str) -> list[dict]:
         return [
-            {"course_name": "高等数学 (A)", "credit": 5, "score": "92", "gpa": 3.7,
-             "semester": "2024-2025-1", "course_type": "必修"},
-            {"course_name": "线性代数", "credit": 3, "score": "88", "gpa": 3.3,
-             "semester": "2024-2025-1", "course_type": "必修"},
-            {"course_name": "大学英语", "credit": 2, "score": "85", "gpa": 3.0,
-             "semester": "2024-2025-1", "course_type": "必修"},
+            # 2023-2024-1 学期
+            {"course_name": "大学英语（一）", "credit": 2.0, "score": "87", "gpa": 3.3,
+             "semester": "2023-2024-1", "course_type": "必修", "grade": "良好"},
+            {"course_name": "高等数学 (A)（上）", "credit": 5.0, "score": "78", "gpa": 2.7,
+             "semester": "2023-2024-1", "course_type": "必修", "grade": "中等"},
+            {"course_name": "线性代数", "credit": 3.0, "score": "91", "gpa": 3.7,
+             "semester": "2023-2024-1", "course_type": "必修", "grade": "优秀"},
+            {"course_name": "C程序设计", "credit": 3.0, "score": "95", "gpa": 4.0,
+             "semester": "2023-2024-1", "course_type": "必修", "grade": "优秀"},
+            {"course_name": "体育（一）", "credit": 1.0, "score": "优秀", "gpa": 4.0,
+             "semester": "2023-2024-1", "course_type": "必修", "grade": "优秀"},
+            {"course_name": "思想道德与法治", "credit": 3.0, "score": "89", "gpa": 3.3,
+             "semester": "2023-2024-1", "course_type": "必修", "grade": "良好"},
+            # 2023-2024-2 学期
+            {"course_name": "大学英语（二）", "credit": 2.0, "score": "82", "gpa": 3.0,
+             "semester": "2023-2024-2", "course_type": "必修", "grade": "良好"},
+            {"course_name": "高等数学 (A)（下）", "credit": 5.0, "score": "85", "gpa": 3.3,
+             "semester": "2023-2024-2", "course_type": "必修", "grade": "良好"},
+            {"course_name": "大学物理 (A)（一）", "credit": 3.0, "score": "76", "gpa": 2.7,
+             "semester": "2023-2024-2", "course_type": "必修", "grade": "中等"},
+            {"course_name": "离散数学", "credit": 4.0, "score": "88", "gpa": 3.3,
+             "semester": "2023-2024-2", "course_type": "必修", "grade": "良好"},
+            {"course_name": "数字逻辑", "credit": 3.0, "score": "90", "gpa": 3.7,
+             "semester": "2023-2024-2", "course_type": "必修", "grade": "优秀"},
+            {"course_name": "体育（二）", "credit": 1.0, "score": "良好", "gpa": 3.3,
+             "semester": "2023-2024-2", "course_type": "必修", "grade": "良好"},
+            # 2024-2025-1 学期
+            {"course_name": "大学英语（三）", "credit": 2.0, "score": "90", "gpa": 3.7,
+             "semester": "2024-2025-1", "course_type": "必修", "grade": "优秀"},
+            {"course_name": "数据结构与算法", "credit": 4.0, "score": "93", "gpa": 4.0,
+             "semester": "2024-2025-1", "course_type": "必修", "grade": "优秀"},
+            {"course_name": "计算机组成原理", "credit": 4.0, "score": "80", "gpa": 3.0,
+             "semester": "2024-2025-1", "course_type": "必修", "grade": "良好"},
+            {"course_name": "概率论与数理统计", "credit": 3.0, "score": "86", "gpa": 3.3,
+             "semester": "2024-2025-1", "course_type": "必修", "grade": "良好"},
+            {"course_name": "汇编语言与接口技术", "credit": 3.0, "score": "72", "gpa": 2.3,
+             "semester": "2024-2025-1", "course_type": "必修", "grade": "中等"},
+            {"course_name": "Python 程序设计基础", "credit": 2.0, "score": "96", "gpa": 4.0,
+             "semester": "2024-2025-1", "course_type": "选修", "grade": "优秀"},
+            {"course_name": "体育（三）", "credit": 1.0, "score": "良好", "gpa": 3.3,
+             "semester": "2024-2025-1", "course_type": "必修", "grade": "良好"},
+            {"course_name": "中国近代史纲要", "credit": 3.0, "score": "84", "gpa": 3.0,
+             "semester": "2024-2025-1", "course_type": "必修", "grade": "良好"},
         ]
 
     async def get_plan_completion(self, session_key: str) -> dict:
         return {
-            "total_required_credits": 170,
-            "earned_credits": 65,
+            "total_required_credits": 175,
+            "earned_credits": 81,
             "categories": [
-                {"name": "必修", "required_credits": 100, "earned_credits": 45},
-                {"name": "选修", "required_credits": 40, "earned_credits": 12},
-                {"name": "通识", "required_credits": 20, "earned_credits": 6},
-                {"name": "实践", "required_credits": 10, "earned_credits": 2},
+                {"name": "必修课程", "required_credits": 110, "earned_credits": 62},
+                {"name": "专业选修", "required_credits": 30, "earned_credits": 8},
+                {"name": "通识教育", "required_credits": 15, "earned_credits": 6},
+                {"name": "实践环节", "required_credits": 12, "earned_credits": 3},
+                {"name": "体育", "required_credits": 4, "earned_credits": 3},
+                {"name": "思政课程", "required_credits": 4, "earned_credits": 3},
             ],
         }
 
@@ -898,7 +981,7 @@ def get_jwc_client(redis_client=None) -> BaseJwcClient:
 
     if getattr(settings, "jwc_use_mock", True):
         logger.info("使用 MockJwcClient (开发模式)")
-        return MockJwcClient()
+        return MockJwcClient(redis_client=redis_client)
     logger.info("使用 RealJwcClient → %s", settings.jwc_base_url)
     return RealJwcClient(
         redis_client=redis_client,
