@@ -30,6 +30,8 @@ import {
   type RagQueryResult,
 } from "@/lib/rag";
 import { generateQuiz, type QuizQuestion } from "@/lib/quiz";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 
 interface QAMessage {
   id: string;
@@ -218,12 +220,16 @@ function QuizPanel({ kb }: { kb: KnowledgeBase }) {
                           <CheckCircle2 className="h-3.5 w-3.5 mt-0.5 shrink-0 text-emerald-600 dark:text-emerald-400" />
                           <div>
                             <p className="text-[11px] font-semibold text-emerald-700 dark:text-emerald-300 mb-0.5">答案</p>
-                            <p className="text-xs leading-relaxed text-emerald-700 dark:text-emerald-300">{q.answer}</p>
+                            <div className="prose prose-xs dark:prose-invert max-w-none prose-p:my-0.5 text-emerald-700 dark:text-emerald-300 text-xs">
+                              <ReactMarkdown remarkPlugins={[remarkGfm]}>{q.answer}</ReactMarkdown>
+                            </div>
                           </div>
                         </div>
                         <div className="rounded-lg bg-muted/40 px-3 py-2">
                           <p className="text-[11px] font-semibold text-muted-foreground mb-0.5">解析</p>
-                          <p className="text-xs leading-relaxed">{q.explanation}</p>
+                          <div className="prose prose-xs dark:prose-invert max-w-none prose-p:my-0.5 text-xs">
+                            <ReactMarkdown remarkPlugins={[remarkGfm]}>{q.explanation}</ReactMarkdown>
+                          </div>
                         </div>
                       </>
                     )}
@@ -596,11 +602,19 @@ export default function RagPage() {
                                     : "bg-muted/50 text-foreground"
                                 }`}
                               >
-                                {msg.content.split("\n").map((line, i) => (
-                                  <p key={i} className={i > 0 ? "mt-1.5" : ""}>
-                                    {line}
-                                  </p>
-                                ))}
+                                {msg.role === "assistant" ? (
+                                  <div className="prose prose-sm dark:prose-invert max-w-none prose-p:my-1 prose-ul:my-1 prose-ol:my-1 prose-li:my-0.5 prose-headings:mt-2 prose-headings:mb-1">
+                                    <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                                      {msg.content}
+                                    </ReactMarkdown>
+                                  </div>
+                                ) : (
+                                  msg.content.split("\n").map((line, i) => (
+                                    <p key={i} className={i > 0 ? "mt-1.5" : ""}>
+                                      {line}
+                                    </p>
+                                  ))
+                                )}
                               </div>
                               {/* Sources */}
                               {msg.sources && msg.sources.length > 0 && (

@@ -201,6 +201,60 @@ async def chat_completion(
         await client.close()
 
 
+async def chat_completion_stream(
+    messages: list[ChatMessage],
+    user_info: dict | None = None,
+    *,
+    db: AsyncSession | None = None,
+    redis_client=None,
+):
+    """流式调用 LLM，yield SSE 格式数据。"""
+    if not _is_configured():
+        yield f"data: {json.dumps({'type': 'text', 'content': _NOT_CONFIGURED_REPLY})}\n\n"
+        yield "data: {\"type\": \"done\"}\n\n"
+        return
+
+    system_text = SYSTEM_PROMPT
+
+    if user_info and db:
+        student_id = user_info.get("student_id", "")
+        user_id = user_info.get("user_id", 0)
+        try:
+            user_data = await _build_user_context(student_id, user_id, db, redis_client)
+            if user_data:
+                system_text += f"\n\n=== 用户实时数据 ===\n{user_data}\n以上数据是真实的，请直接根据以上内容回答用户问题。"
+        except Exception as e:
+            logger.warning("注入用户数据失败: %s", e)
+
+        if user_id:
+            try:
+                from services.memory.service import get_user_context
+                user_context = await get_user_context(db, user_id)
+                if user_context:
+                    system_text += f"\n\n{user_context}"
+            except Exception:
+                pass
+
+    anthropic_messages = [{"role": msg.role, "content": msg.content} for msg in messages]
+    client = _get_llm_client()
+    full_reply = ""
+    try:
+        async for chunk in client.chat_stream(anthropic_messages, system=system_text):
+            full_reply += chunk
+            yield f"data: {json.dumps({'type': 'text', 'content': chunk})}\n\n"
+        yield f"data: {json.dumps({'type': 'done'})}\n\n"
+
+        # 异步提取用户记忆
+        if db and user_info and user_info.get("user_id"):
+            _schedule_memory_extraction(messages, db, user_info["user_id"])
+
+    except Exception as e:
+        logger.error("LLM stream error: %s", e, exc_info=True)
+        yield f"data: {json.dumps({'type': 'error', 'content': '抱歉，AI 服务出现异常，请稍后再试～'})}\n\n"
+    finally:
+        await client.close()
+
+
 def _schedule_memory_extraction(messages: list[ChatMessage], db: AsyncSession, user_id: int):
     """后台异步提取用户记忆（不阻塞响应）"""
     async def _bg_extract():

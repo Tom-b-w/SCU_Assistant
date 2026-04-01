@@ -37,6 +37,36 @@ export async function bindChaoxing(sessionId: string): Promise<void> {
   await api.post(`/api/chaoxing/bind/${sessionId}`)
 }
 
+// ---- 免登录扫码端点（登录页使用） ----
+
+export async function guestCreateQRCode(): Promise<QRCodeData> {
+  const { data } = await api.post("/api/chaoxing/qr/guest-create")
+  return data
+}
+
+export async function guestCheckQRStatus(sessionId: string): Promise<QRStatus> {
+  const { data } = await api.get(`/api/chaoxing/qr/guest-status/${sessionId}`)
+  return data
+}
+
+export interface GuestQRLoginResponse {
+  access_token: string
+  token_type: string
+  user: {
+    id: number
+    student_id: string
+    name: string
+    campus: string | null
+    major: string | null
+    grade: number | null
+  }
+}
+
+export async function guestQRLogin(sessionId: string): Promise<GuestQRLoginResponse> {
+  const { data } = await api.post(`/api/chaoxing/qr/guest-login/${sessionId}`)
+  return data
+}
+
 export async function getBindStatus(): Promise<BindStatus> {
   const { data } = await api.get("/api/chaoxing/status")
   return data

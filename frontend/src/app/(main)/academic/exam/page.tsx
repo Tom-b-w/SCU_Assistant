@@ -16,6 +16,8 @@ import {
   BookOpen,
   AlertTriangle,
 } from "lucide-react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import {
   getExams,
   createExam,
@@ -320,11 +322,11 @@ export default function ExamPage() {
                           AI 复习计划
                         </div>
                         <div className="rounded-lg bg-purple-500/5 p-3 text-xs leading-relaxed text-foreground/80">
-                          {reviewPlans[exam.id].split("\n").map((line, i) => (
-                            <p key={i} className={i > 0 ? "mt-1.5" : ""}>
-                              {line}
-                            </p>
-                          ))}
+                          <div className="prose prose-xs dark:prose-invert max-w-none prose-p:my-1 prose-ul:my-1 prose-ol:my-1 prose-li:my-0.5 prose-headings:mt-2 prose-headings:mb-1 prose-headings:text-sm">
+                            <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                              {reviewPlans[exam.id]}
+                            </ReactMarkdown>
+                          </div>
                         </div>
                       </div>
                     ) : (

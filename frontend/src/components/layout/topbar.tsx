@@ -36,6 +36,7 @@ import {
   FileQuestion,
   CloudSun,
   Newspaper,
+  GraduationCap,
 } from "lucide-react";
 import { useTheme } from "next-themes";
 import {
@@ -73,6 +74,7 @@ const SEARCH_ROUTES = [
   { keywords: ["校历", "放假", "calendar"], href: "/campus/calendar", label: "校历", icon: Calendar },
   { keywords: ["考试", "倒计时", "期末", "期中", "exam"], href: "/academic/exam", label: "考试倒计时", icon: Timer },
   { keywords: ["课件", "问答", "rag", "知识库", "文档"], href: "/academic/rag", label: "课件问答", icon: FileQuestion },
+  { keywords: ["选课", "推荐", "培养方案", "recommend"], href: "/academic/recommend", label: "选课推荐", icon: GraduationCap },
   { keywords: ["天气", "穿衣", "温度", "weather"], href: "/weather", label: "天气穿衣", icon: CloudSun },
   { keywords: ["通知", "公告", "notification"], href: "/notification", label: "校园通知", icon: Bell },
   { keywords: ["简报", "日报", "briefing"], href: "/dashboard", label: "每日简报", icon: Newspaper },

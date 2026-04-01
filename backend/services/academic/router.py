@@ -162,3 +162,20 @@ async def generate_review_plan(
     if "error" in result:
         raise HTTPException(status_code=400, detail=result["error"])
     return result
+
+
+# ---------------------------------------------------------------------------
+# 选课推荐
+# ---------------------------------------------------------------------------
+
+
+@router.post("/course-recommend")
+async def course_recommend(
+    user=Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """基于培养方案和已修课程，AI 智能选课推荐"""
+    result = await exam_service.generate_course_recommendation(db, user.id)
+    if "error" in result:
+        raise HTTPException(status_code=400, detail=result["error"])
+    return result

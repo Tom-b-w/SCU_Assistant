@@ -38,6 +38,7 @@ const navGroups = [
       { href: "/academic/deadline", label: "DDL 追踪", icon: BookOpen, color: "text-orange-500", bg: "bg-orange-500/10", activeBg: "bg-orange-500" },
       { href: "/academic/exam", label: "考试倒计时", icon: Timer, color: "text-red-500", bg: "bg-red-500/10", activeBg: "bg-red-500" },
       { href: "/academic/rag", label: "课件问答", icon: FileQuestion, color: "text-violet-500", bg: "bg-violet-500/10", activeBg: "bg-violet-500" },
+      { href: "/academic/recommend", label: "选课推荐", icon: GraduationCap, color: "text-indigo-500", bg: "bg-indigo-500/10", activeBg: "bg-indigo-500" },
     ],
   },
   {

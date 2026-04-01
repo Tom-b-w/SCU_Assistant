@@ -28,14 +28,16 @@ export default function NotificationPage() {
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [source, setSource] = useState<string | undefined>(undefined);
+  const [error, setError] = useState("");
 
   const fetchNotifications = useCallback(async () => {
     setLoading(true);
+    setError("");
     try {
       const data = await getNotifications(source, 50, 0);
       setNotifications(data);
     } catch {
-      // silently fail
+      setError("获取通知失败，请稍后重试");
     } finally {
       setLoading(false);
     }
@@ -85,6 +87,14 @@ export default function NotificationPage() {
           </button>
         ))}
       </div>
+
+      {/* Error */}
+      {error && (
+        <div className="flex items-center gap-2 rounded-lg bg-red-500/10 px-4 py-3 text-sm text-red-600 ring-1 ring-red-500/20 dark:text-red-400">
+          {error}
+          <button onClick={fetchNotifications} className="ml-auto text-xs underline hover:no-underline">重试</button>
+        </div>
+      )}
 
       {/* Notification List */}
       {loading ? (

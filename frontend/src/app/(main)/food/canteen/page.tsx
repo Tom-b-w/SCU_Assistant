@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import {
   UtensilsCrossed,
   MapPin,
@@ -326,12 +326,38 @@ const MEAL_ICONS = { breakfast: Coffee, lunch: Sun, dinner: Moon };
 
 export default function CanteenPage() {
   const [selectedCampus, setSelectedCampus] = useState<string>("全部");
+  const [selectedCategory, setSelectedCategory] = useState<string>("全部");
   const [expandedId, setExpandedId] = useState<number | null>(null);
   const campuses = ["全部", "江安", "望江", "华西"];
 
-  const filtered = selectedCampus === "全部"
-    ? CANTEENS
-    : CANTEENS.filter((c) => c.campus === selectedCampus);
+  // Recompute visible categories based on selected campus so the category
+  // filter only shows categories that exist in the current campus selection.
+  const visibleCategories = useMemo(() => {
+    const source =
+      selectedCampus === "全部"
+        ? CANTEENS
+        : CANTEENS.filter((c) => c.campus === selectedCampus);
+    const catSet = new Set<string>();
+    for (const canteen of source) {
+      for (const w of canteen.windows) {
+        for (const cat of w.categories) {
+          catSet.add(cat);
+        }
+      }
+    }
+    return Array.from(catSet);
+  }, [selectedCampus]);
+
+  const filtered = CANTEENS.filter((c) => {
+    if (selectedCampus !== "全部" && c.campus !== selectedCampus) return false;
+    if (selectedCategory !== "全部") {
+      const hasCategory = c.windows.some((w) =>
+        w.categories.includes(selectedCategory)
+      );
+      if (!hasCategory) return false;
+    }
+    return true;
+  });
 
   return (
     <div className="mx-auto max-w-3xl space-y-4">
@@ -351,7 +377,10 @@ export default function CanteenPage() {
         {campuses.map((campus) => (
           <button
             key={campus}
-            onClick={() => setSelectedCampus(campus)}
+            onClick={() => {
+              setSelectedCampus(campus);
+              setSelectedCategory("全部");
+            }}
             className={`flex-1 rounded-lg py-1.5 text-xs font-medium transition-all ${
               selectedCampus === campus
                 ? "bg-white text-foreground shadow-sm dark:bg-gray-800"
@@ -359,6 +388,23 @@ export default function CanteenPage() {
             }`}
           >
             {campus}
+          </button>
+        ))}
+      </div>
+
+      {/* Category Filter */}
+      <div className="flex flex-wrap gap-1.5 rounded-xl bg-muted/30 p-2">
+        {["全部", ...visibleCategories].map((cat) => (
+          <button
+            key={cat}
+            onClick={() => setSelectedCategory(cat)}
+            className={`rounded-lg px-2.5 py-1.5 text-xs font-medium transition-all ${
+              selectedCategory === cat
+                ? "bg-white text-foreground shadow-sm dark:bg-gray-800"
+                : "text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            {cat}
           </button>
         ))}
       </div>

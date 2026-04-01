@@ -15,7 +15,9 @@ import {
   Loader2,
   RotateCcw,
 } from "lucide-react";
-import { sendChatMessage, type ChatMessage } from "@/lib/chat";
+import { sendChatMessageStream, type ChatMessage } from "@/lib/chat";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 
 const SUGGESTIONS = [
   { icon: CalendarDays, text: "今天有什么课？", color: "text-blue-500 bg-blue-500/10" },
@@ -35,7 +37,7 @@ export default function ChatPage() {
 function ChatPageInner() {
   const user = useAuthStore((state) => state.user);
   const searchParams = useSearchParams();
-  const { messages: storedMessages, addMessage, clearMessages } = useChatStore();
+  const { messages: storedMessages, addMessage, appendToLastMessage, clearMessages } = useChatStore();
   const [input, setInput] = useState("");
   const [isTyping, setIsTyping] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -69,31 +71,35 @@ function ChatPageInner() {
     setInput("");
     setIsTyping(true);
 
-    try {
-      const allMessages = [...storedMessages, userMsg];
-      const history: ChatMessage[] = allMessages.map((m) => ({
-        role: m.role,
-        content: m.content,
-      }));
-      const response = await sendChatMessage(history);
-      const aiMsg: StoredMessage = {
-        id: (Date.now() + 1).toString(),
-        role: "assistant",
-        content: response.reply,
-        timestamp: new Date().toISOString(),
-      };
-      addMessage(aiMsg);
-    } catch {
-      const errorMsg: StoredMessage = {
-        id: (Date.now() + 1).toString(),
-        role: "assistant",
-        content: "抱歉，发送消息时出现错误，请稍后重试。",
-        timestamp: new Date().toISOString(),
-      };
-      addMessage(errorMsg);
-    } finally {
-      setIsTyping(false);
-    }
+    // 先添加一个空的 AI 消息占位，流式追加内容
+    const aiMsgId = (Date.now() + 1).toString();
+    const aiMsg: StoredMessage = {
+      id: aiMsgId,
+      role: "assistant",
+      content: "",
+      timestamp: new Date().toISOString(),
+    };
+    addMessage(aiMsg);
+
+    const allMessages = [...storedMessages, userMsg];
+    const history: ChatMessage[] = allMessages.map((m) => ({
+      role: m.role,
+      content: m.content,
+    }));
+
+    await sendChatMessageStream(
+      history,
+      (chunk) => {
+        appendToLastMessage(chunk);
+      },
+      () => {
+        setIsTyping(false);
+      },
+      (errorText) => {
+        appendToLastMessage(errorText || "抱歉，发送消息时出现错误，请稍后重试。");
+        setIsTyping(false);
+      },
+    );
   }
 
   function handleKeyDown(e: React.KeyboardEvent) {
@@ -166,11 +172,19 @@ function ChatPageInner() {
                       : "bg-white ring-1 ring-black/[0.04] text-foreground shadow-sm dark:bg-gray-900 dark:ring-white/[0.06]"
                   }`}
                 >
-                  {msg.content.split("\n").map((line, i) => (
-                    <p key={i} className={i > 0 ? "mt-2" : ""}>
-                      {line}
-                    </p>
-                  ))}
+                  {msg.role === "assistant" ? (
+                    <div className="prose prose-sm dark:prose-invert max-w-none prose-p:my-1 prose-ul:my-1 prose-ol:my-1 prose-li:my-0.5 prose-headings:mt-3 prose-headings:mb-1 prose-pre:bg-muted/50 prose-pre:text-foreground prose-code:text-[#C41230] prose-code:before:content-none prose-code:after:content-none">
+                      <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                        {msg.content}
+                      </ReactMarkdown>
+                    </div>
+                  ) : (
+                    msg.content.split("\n").map((line, i) => (
+                      <p key={i} className={i > 0 ? "mt-2" : ""}>
+                        {line}
+                      </p>
+                    ))
+                  )}
                 </div>
               </div>
             ))}

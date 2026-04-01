@@ -257,7 +257,8 @@ export default function SettingsPage() {
           label: "AI 记忆管理",
           description: "查看和管理 AI 记住的偏好信息",
           action: "link",
-          disabled: true,
+          disabled: false,
+          href: "/settings/memory",
         },
       ],
     },
@@ -419,7 +420,11 @@ export default function SettingsPage() {
               return (
                 <div
                   key={item.label}
-                  onClick={item.onToggle}
+                  onClick={() => {
+                    if (item.disabled) return;
+                    if ("onToggle" in item && item.onToggle) item.onToggle();
+                    if ("href" in item && item.href) router.push(item.href as string);
+                  }}
                   className={`flex items-center gap-3 px-4 py-3.5 ${
                     i > 0 ? "border-t border-border/30" : ""
                   } ${item.disabled ? "opacity-50" : "cursor-pointer hover:bg-muted/30"} transition-colors`}
@@ -434,12 +439,12 @@ export default function SettingsPage() {
                   {item.action === "toggle" && (
                     <div
                       className={`h-5 w-9 rounded-full transition-colors ${
-                        item.active ? "bg-primary" : "bg-muted"
+                        "active" in item && item.active ? "bg-primary" : "bg-muted"
                       }`}
                     >
                       <div
                         className={`h-5 w-5 rounded-full bg-white shadow-sm ring-1 ring-black/10 transition-transform ${
-                          item.active ? "translate-x-4" : ""
+                          "active" in item && item.active ? "translate-x-4" : ""
                         }`}
                       />
                     </div>

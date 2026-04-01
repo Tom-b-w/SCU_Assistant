@@ -74,6 +74,45 @@ class LLMClient:
                 })
         return result
 
+    async def chat_stream(
+        self,
+        messages: list[dict],
+        system: str = "",
+        max_tokens: int = 2048,
+        temperature: float = 0.7,
+    ):
+        """流式调用 Anthropic Messages API，yield 文本增量。"""
+        payload = {
+            "model": self.model,
+            "messages": messages,
+            "max_tokens": max_tokens,
+            "temperature": temperature,
+            "stream": True,
+        }
+        if system:
+            payload["system"] = system
+
+        async with self._http.stream("POST", "/v1/messages", json=payload) as resp:
+            resp.raise_for_status()
+            async for line in resp.aiter_lines():
+                if not line.startswith("data: "):
+                    continue
+                data_str = line[6:]
+                if data_str.strip() == "[DONE]":
+                    break
+                try:
+                    import json as _json
+                    event = _json.loads(data_str)
+                    event_type = event.get("type", "")
+                    if event_type == "content_block_delta":
+                        delta = event.get("delta", {})
+                        if delta.get("type") == "text_delta":
+                            yield delta["text"]
+                    elif event_type == "message_stop":
+                        break
+                except Exception:
+                    continue
+
     async def embedding(
         self,
         texts: list[str],
