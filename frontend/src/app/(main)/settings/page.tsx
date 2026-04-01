@@ -46,7 +46,7 @@ function ChaoxingQRModal({
   onBound: () => void;
 }) {
   const [qrImage, setQrImage] = useState<string | null>(null);
-  const [sessionId, setSessionId] = useState<string | null>(null);
+  const [, setSessionId] = useState<string | null>(null);
   const [statusMsg, setStatusMsg] = useState("加载二维码...");
   const [phase, setPhase] = useState<"loading" | "waiting" | "scanned" | "done" | "error">("loading");
   const pollRef = useRef<NodeJS.Timeout | null>(null);

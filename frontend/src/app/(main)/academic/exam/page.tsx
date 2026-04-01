@@ -240,7 +240,7 @@ export default function ExamPage() {
             <BookOpen className="mx-auto h-12 w-12 text-emerald-500/30" />
             <p className="mt-4 text-muted-foreground">暂无考试安排</p>
             <p className="mt-1 text-xs text-muted-foreground/60">
-              点击"添加考试"开始记录
+              点击&ldquo;添加考试&rdquo;开始记录
             </p>
           </div>
         ) : (

@@ -2,10 +2,9 @@
 
 import React, { useState, useEffect } from "react";
 import { getSchedule, type Course } from "@/lib/academic";
-import { Loader2, CalendarDays, MapPin, AlertCircle, RefreshCw, User } from "lucide-react";
+import { Loader2, CalendarDays, MapPin, AlertCircle, User } from "lucide-react";
 
 const WEEKDAYS = ["周一", "周二", "周三", "周四", "周五", "周六", "周日"];
-const SECTIONS = Array.from({ length: 12 }, (_, i) => i + 1);
 const SECTION_TIMES: Record<number, [string, string]> = {
   1: ["08:00", "08:45"], 2: ["08:55", "09:40"], 3: ["10:00", "10:45"],
   4: ["10:55", "11:40"], 5: ["14:00", "14:45"], 6: ["14:55", "15:40"],
@@ -45,7 +44,7 @@ export default function SchedulePage() {
     try {
       const data = await getSchedule();
       setCourses(data.courses);
-      setFetchedAt((data as any).fetched_at || null);
+      setFetchedAt((data as Record<string, unknown>).fetched_at as string || null);
     } catch {
       setError("获取课表失败，可能需要重新登录");
     } finally {

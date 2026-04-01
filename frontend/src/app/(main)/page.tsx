@@ -14,7 +14,6 @@ import {
   Target,
   Award,
   Newspaper,
-  Loader2,
 } from "lucide-react";
 import Link from "next/link";
 import { useAuthStore } from "@/stores/auth-store";
@@ -470,7 +469,7 @@ export default function DashboardPage() {
         <div className="flex-1 min-w-0">
           <p className="font-semibold text-foreground">AI 智能助手</p>
           <p className="mt-0.5 text-sm text-muted-foreground truncate">
-            "根据你的课表和成绩分析，提供个性化学业建议"
+            {"\u201C根据你的课表和成绩分析，提供个性化学业建议\u201D"}
           </p>
         </div>
         <div className="flex items-center gap-1 text-sm font-medium text-primary transition-transform duration-300 group-hover:translate-x-1">

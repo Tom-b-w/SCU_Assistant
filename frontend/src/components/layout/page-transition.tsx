@@ -14,12 +14,11 @@ export function PageTransition({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     if (prevPathname.current !== pathname) {
+      prevPathname.current = pathname;
+      // 页面过渡动画需要先隐藏再显示
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setIsVisible(false);
-      // 短暂隐藏后触发入场动画
-      const timer = setTimeout(() => {
-        setIsVisible(true);
-        prevPathname.current = pathname;
-      }, 50);
+      const timer = setTimeout(() => setIsVisible(true), 50);
       return () => clearTimeout(timer);
     }
   }, [pathname]);

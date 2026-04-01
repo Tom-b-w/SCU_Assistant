@@ -10,11 +10,15 @@ export const api = axios.create({
   },
 });
 
+// Lazy accessor to avoid circular dependency with auth-store
+function getAuthStore() {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  return require("@/stores/auth-store").useAuthStore;
+}
+
 // Request interceptor: attach access token from Zustand store (in-memory)
 api.interceptors.request.use((config) => {
-  // Lazy import to avoid circular dependency
-  const { useAuthStore } = require("@/stores/auth-store");
-  const token = useAuthStore.getState().accessToken;
+  const token = getAuthStore().getState().accessToken;
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
   }
@@ -31,8 +35,7 @@ api.interceptors.response.use(
 
     // 教务系统会话过期 — 清除登录态，跳转登录页
     if (status === 403 && errorCode === "SESSION_EXPIRED") {
-      const { useAuthStore } = require("@/stores/auth-store");
-      useAuthStore.getState().logout();
+      getAuthStore().getState().logout();
       if (typeof window !== "undefined") {
         window.location.href = "/login";
       }
@@ -43,13 +46,11 @@ api.interceptors.response.use(
       originalRequest._retry = true;
       try {
         const { data } = await api.post("/api/auth/refresh");
-        const { useAuthStore } = require("@/stores/auth-store");
-        useAuthStore.getState().setAccessToken(data.access_token);
+        getAuthStore().getState().setAccessToken(data.access_token);
         originalRequest.headers.Authorization = `Bearer ${data.access_token}`;
         return api(originalRequest);
       } catch {
-        const { useAuthStore } = require("@/stores/auth-store");
-        useAuthStore.getState().logout();
+        getAuthStore().getState().logout();
         if (typeof window !== "undefined") {
           window.location.href = "/login";
         }

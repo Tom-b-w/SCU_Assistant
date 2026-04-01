@@ -83,9 +83,10 @@ export default function LoginPage() {
       });
       setUser(data.user, data.access_token);
       router.push("/");
-    } catch (err: any) {
+    } catch (err: unknown) {
+      const axiosErr = err as { response?: { data?: { error?: { message?: string } } } };
       const msg =
-        err.response?.data?.error?.message ||
+        axiosErr.response?.data?.error?.message ||
         "登录失败，请检查学号、密码和验证码";
       setError(msg);
       fetchCaptcha();
@@ -297,6 +298,7 @@ export default function LoginPage() {
                   {captchaLoading ? (
                     <RefreshCw className="h-4 w-4 animate-spin text-white/50" />
                   ) : captchaImage ? (
+                    // eslint-disable-next-line @next/next/no-img-element
                     <img
                       src={`data:image/${captchaImage.startsWith("iVBOR") ? "png" : "jpeg"};base64,${captchaImage}`}
                       alt="验证码"

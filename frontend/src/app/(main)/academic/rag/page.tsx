@@ -154,7 +154,7 @@ function QuizPanel({ kb }: { kb: KnowledgeBase }) {
         {questions.length === 0 && !loading ? (
           <div className="flex h-full flex-col items-center justify-center text-muted-foreground">
             <PenLine className="h-10 w-10 opacity-20" />
-            <p className="mt-3 text-sm">点击"生成题目"开始出题</p>
+            <p className="mt-3 text-sm">点击&ldquo;生成题目&rdquo;开始出题</p>
             <p className="mt-1 text-xs opacity-60">AI 将根据知识库内容出题</p>
           </div>
         ) : loading ? (
@@ -281,6 +281,7 @@ export default function RagPage() {
     } finally {
       setLoading(false);
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {

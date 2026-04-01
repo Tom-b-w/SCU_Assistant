@@ -12,7 +12,6 @@ import {
   UtensilsCrossed,
   BookOpen,
   Bus,
-  Loader2,
   RotateCcw,
 } from "lucide-react";
 import { sendChatMessageStream, type ChatMessage } from "@/lib/chat";
@@ -55,6 +54,7 @@ function ChatPageInner() {
       initialQuerySent.current = true;
       sendMessage(q);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams]);
 
   async function sendMessage(text?: string) {
