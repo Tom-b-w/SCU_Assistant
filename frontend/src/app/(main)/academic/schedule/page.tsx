@@ -44,7 +44,7 @@ export default function SchedulePage() {
     try {
       const data = await getSchedule();
       setCourses(data.courses);
-      setFetchedAt((data as Record<string, unknown>).fetched_at as string || null);
+      setFetchedAt((data as unknown as Record<string, unknown>).fetched_at as string || null);
     } catch {
       setError("获取课表失败，可能需要重新登录");
     } finally {
