@@ -126,7 +126,9 @@ npm install && npm run dev
 
 **不需要安装 Docker**，使用 SQLite 替代 PostgreSQL，内存缓存替代 Redis。
 
-#### 一键启动
+提供三种启动方式，任选其一：
+
+#### B-1. 一键启动（双击 bat）
 
 ```bash
 # Windows：双击根目录的 start_dev.bat
@@ -134,23 +136,60 @@ npm install && npm run dev
 chmod +x start_dev.sh && ./start_dev.sh
 ```
 
-#### 手动启动
+自动完成虚拟环境创建、依赖安装、前后端启动，无需手动操作。
 
-**步骤 1：后端**
+#### B-2. Conda 环境（推荐，适合团队统一环境）
+
+> 详细指南见 [docs/CONDA_DEV_GUIDE.md](docs/CONDA_DEV_GUIDE.md)
+
+**首次搭建（只需一次）：**
 
 ```bash
+# 创建 Conda 环境
+conda create -n scu python=3.11 -y
+conda activate scu
+
+# 安装后端依赖
 cd backend
-
-# 创建虚拟环境（首次）
-python -m venv .venv
-# Windows: .venv\Scripts\activate | macOS/Linux: source .venv/bin/activate
-
-# 安装依赖（包含 SQLite 和 fakeredis 支持）
 pip install -e ".[dev]"
 
-# 使用开发配置启动（自动加载 .env.dev）
-python start_dev.py
+# 安装前端依赖
+cd ../frontend
+npm install
 ```
+
+**日常开发（每次两个终端）：**
+
+```bash
+# 终端 1 — 后端（支持热重载，改代码自动重启）
+cd backend
+conda activate scu
+python start_dev.py --reload
+
+# 终端 2 — 前端（自带热更新，改代码浏览器自动刷新）
+cd frontend
+npm run dev
+```
+
+浏览器打开 http://localhost:3000 即可使用，http://localhost:8000/docs 查看 API 文档。
+
+#### B-3. venv 手动启动
+
+```bash
+# 后端
+cd backend
+python -m venv .venv
+# Windows: .venv\Scripts\activate | macOS/Linux: source .venv/bin/activate
+pip install -e ".[dev]"
+python start_dev.py --reload
+
+# 前端（新终端）
+cd frontend
+npm install
+npm run dev
+```
+
+#### 开发环境说明
 
 `.env.dev` 已预配置好，**无需修改**，核心配置：
 ```env
@@ -160,16 +199,6 @@ JWC_USE_MOCK=true                                 # Mock 教务数据
 ```
 
 > SQLite 数据库文件 `dev_scu.db` 会自动创建在 backend 目录下，首次启动自动建表。
-
-**步骤 2：前端**
-
-```bash
-cd frontend
-npm install
-npm run dev
-```
-
-访问 [http://localhost:3000](http://localhost:3000) 即可使用。
 
 #### 方式 B 的功能说明
 
