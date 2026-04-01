@@ -46,3 +46,6 @@ plan_screenshot.png
 
 # ChromaDB data
 data/
+
+# Dev SQLite database
+*.db

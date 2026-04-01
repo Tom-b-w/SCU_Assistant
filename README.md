@@ -83,11 +83,13 @@ SCU_Assistant/
 
 ## 快速开始
 
+> **无需 Docker！** 项目支持纯本地开发模式（SQLite + 内存缓存），无需安装 Docker Desktop。详见下方"方式 B"。
+
 ### 前置要求
 
 - **Node.js** >= 18（推荐 20+）
 - **Python** >= 3.11
-- **Docker** 和 **Docker Compose**（用于 PostgreSQL 和 Redis）
+- **Docker** 和 **Docker Compose**（可选，仅方式 A 需要）
 
 ### 1. 克隆仓库
 
@@ -96,117 +98,100 @@ git clone https://github.com/Tom-b-w/SCU_Assistant.git
 cd SCU_Assistant
 ```
 
-### 2. 启动数据库服务
+### 方式 A：Docker 开发（需要 Docker Desktop）
 
 ```bash
+# 启动数据库服务
 docker compose up -d postgres redis
+
+# 配置后端
+cd backend
+python -m venv .venv
+# Windows: .venv\Scripts\activate | macOS/Linux: source .venv/bin/activate
+pip install -e ".[dev]"
+
+# 创建 .env 并配置（见下方环境变量说明）
+# 执行数据库迁移
+alembic upgrade head
+
+# 启动后端
+python -m uvicorn gateway.main:app --host 0.0.0.0 --port 8000
+
+# 启动前端（新终端）
+cd ../frontend
+npm install && npm run dev
 ```
 
-验证服务是否正常：
+### 方式 B：无 Docker 本地开发（推荐团队协作）
+
+**不需要安装 Docker**，使用 SQLite 替代 PostgreSQL，内存缓存替代 Redis。
+
+#### 一键启动
+
 ```bash
-docker compose ps
-# postgres 和 redis 应显示 healthy
+# Windows：双击根目录的 start_dev.bat
+# macOS/Linux：
+chmod +x start_dev.sh && ./start_dev.sh
 ```
 
-> **常见问题**：如果端口 5432 或 6379 被占用，检查是否有其他 PostgreSQL / Redis 实例在运行，使用 `docker ps` 排查。
+#### 手动启动
 
-### 3. 配置后端
+**步骤 1：后端**
 
 ```bash
 cd backend
 
-# 创建 Python 虚拟环境
+# 创建虚拟环境（首次）
 python -m venv .venv
+# Windows: .venv\Scripts\activate | macOS/Linux: source .venv/bin/activate
 
-# 激活虚拟环境
-# Windows:
-.venv\Scripts\activate
-# macOS/Linux:
-source .venv/bin/activate
-
-# 安装依赖
+# 安装依赖（包含 SQLite 和 fakeredis 支持）
 pip install -e ".[dev]"
+
+# 使用开发配置启动（自动加载 .env.dev）
+python start_dev.py
 ```
 
-创建 `.env` 配置文件：
-
-```bash
-cp .env.example .env  # 如果有的话，或手动创建
-```
-
-`.env` 文件内容（按需配置）：
-
+`.env.dev` 已预配置好，**无需修改**，核心配置：
 ```env
-# 数据库（Docker 默认配置，通常无需修改）
-DATABASE_URL=postgresql+asyncpg://postgres:postgres@localhost:5432/scu_assistant
-REDIS_URL=redis://localhost:6379/0
-
-# JWT 密钥（生产环境请更换为随机长字符串）
-JWT_SECRET_KEY=change-me-in-production-use-a-long-random-string-here
-
-# LLM API（AI 对话功能必需）
-LLM_API_KEY=你的API密钥
-LLM_BASE_URL=https://api.anthropic.com
-LLM_MODEL=claude-sonnet-4-20250514
-
-# 教务系统（设为 false 启用真实教务系统对接）
-JWC_USE_MOCK=true
-JWC_BASE_URL=http://zhjw.scu.edu.cn
-
-# 和风天气 API（可选，不配置则使用 mock 数据）
-QWEATHER_API_KEY=
-
-# Embedding（RAG 功能需要，留空则复用 LLM 配置）
-EMBEDDING_MODEL=text-embedding-3-small
-EMBEDDING_API_KEY=
-EMBEDDING_BASE_URL=
+DATABASE_URL=sqlite+aiosqlite:///./dev_scu.db    # SQLite 文件数据库
+REDIS_URL=memory://                               # 内存缓存（fakeredis）
+JWC_USE_MOCK=true                                 # Mock 教务数据
 ```
 
-执行数据库迁移：
+> SQLite 数据库文件 `dev_scu.db` 会自动创建在 backend 目录下，首次启动自动建表。
 
-```bash
-alembic upgrade head
-```
-
-> **常见问题**：如果 `alembic upgrade head` 报连接错误，请确认 Docker 中的 PostgreSQL 容器已启动且 healthy。可以用 `docker exec -it <postgres容器名> psql -U postgres -d scu_assistant -c "SELECT 1"` 测试连接。
-
-启动后端服务：
-
-```bash
-python -m uvicorn gateway.main:app --host 0.0.0.0 --port 8000
-```
-
-验证后端运行：
-```bash
-curl http://localhost:8000/health
-# 应返回 {"status":"ok","services":{"database":"ok","redis":"ok"}}
-```
-
-> **注意**：开发时避免使用 `--reload` 参数，因为在 Windows 上可能产生多个僵尸进程导致端口占用和旧代码残留。如果遇到端口已被占用的问题，使用 `taskkill /F /IM python.exe`（Windows）或 `pkill -f uvicorn`（Linux/macOS）清理后重启。
-
-### 4. 配置前端
+**步骤 2：前端**
 
 ```bash
 cd frontend
-
-# 安装依赖
 npm install
-
-# 启动开发服务器
 npm run dev
 ```
 
 访问 [http://localhost:3000](http://localhost:3000) 即可使用。
 
-### 5. 一键启动（Docker Compose 全量）
+#### 方式 B 的功能说明
 
-如果希望用 Docker 一次性启动所有服务：
+| 功能 | 状态 | 说明 |
+|------|------|------|
+| AI 对话 / 流式输出 | ✅ | 需配置 LLM API Key |
+| 课表 / 成绩 / 培养方案 | ✅ | Mock 模式，14门课 + 20门成绩 |
+| DDL 管理 | ✅ | 完全支持 |
+| 考试倒计时 | ✅ | 完全支持 |
+| 课件问答 (RAG) | ✅ | 需配置 Embedding API Key |
+| 天气穿衣 | ✅ | 不配置 API Key 时使用 Mock 数据 |
+| 校车 / 校历 / 食堂 | ✅ | 静态数据，完全支持 |
+| 选课推荐 | ✅ | 需配置 LLM API Key |
+| 校园通知 | ⚠️ | 爬虫依赖外网，校外可能无法抓取 |
+
+### 方式 C：Docker Compose 全量启动
 
 ```bash
 docker compose up -d
 ```
 
-这会启动前端（:3000）、后端（:8000）、PostgreSQL（:5432）、Redis（:6379）四个容器。
+一次性启动前端（:3000）、后端（:8000）、PostgreSQL（:5432）、Redis（:6379）。
 
 ## 环境变量说明
 
@@ -276,6 +261,27 @@ docker compose up -d
 | GET | `/api/deadlines` | DDL 列表 |
 | POST | `/api/rag/query` | RAG 文档问答 |
 | GET | `/api/briefing/today` | 今日简报 |
+
+## 团队协作指南
+
+> - [docs/CONDA_DEV_GUIDE.md](docs/CONDA_DEV_GUIDE.md) — **Conda 环境搭建**（推荐，最直接）
+> - [docs/TEAM_DEV_GUIDE.md](docs/TEAM_DEV_GUIDE.md) — 完整团队协作指南（Git 工作流、分工示例、FAQ）
+
+### 环境选择
+
+| 场景 | 推荐方式 | 说明 |
+|------|----------|------|
+| 无法安装 Docker | **方式 B** | SQLite + fakeredis，零外部依赖 |
+| 个人开发 / 功能调试 | **方式 B** | 启动快，资源占用少 |
+| 集成测试 / 上线前验证 | **方式 A** | 使用 PostgreSQL + Redis，接近生产环境 |
+| 演示 / 部署 | **方式 C** | Docker Compose 一键启动 |
+
+### 注意事项
+
+1. **`.env.dev` 已提交到仓库**，团队成员 clone 后即可使用方式 B 开发
+2. **`dev_scu.db` 不要提交**（已在 `.gitignore` 中），每人本地独立数据库
+3. **LLM API Key** 需团队内部共享（见 `.env.dev` 中的配置），请勿公开
+4. Windows 开发时避免使用 `uvicorn --reload`，可能产生僵尸进程
 
 ## 许可证
 
