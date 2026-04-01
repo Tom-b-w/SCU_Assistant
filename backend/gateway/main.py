@@ -54,8 +54,15 @@ def create_app() -> FastAPI:
     app.include_router(memory_router)
 
     @app.on_event("startup")
+    async def init_db():
+        """SQLite 开发环境自动建表"""
+        from shared.models import Base
+        async with engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
+
+    @app.on_event("startup")
     async def seed_data():
-        """应用启动时 seed 通知等数据"""
+        """应用启动时抓取并存储通知数据"""
         from shared.database import async_session
         from services.notification.crawler import seed_notifications
         try:
