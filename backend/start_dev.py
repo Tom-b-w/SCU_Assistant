@@ -26,10 +26,12 @@ if "--reload" in sys.argv or "-r" in sys.argv:
         print("[dev] 提示: 安装 watchfiles 可启用热重载: pip install watchfiles")
         print("[dev] 当前以普通模式启动，修改代码后需手动重启 (Ctrl+C 后重新运行)")
 
-uvicorn.run(
-    "gateway.main:app",
-    host="0.0.0.0",
-    port=8000,
-    reload=use_reload,
-    reload_dirs=["gateway", "services", "shared"] if use_reload else None,
-)
+# 核心：加这一行判断，包裹启动代码
+if __name__ == '__main__':
+    uvicorn.run(
+        "gateway.main:app",
+        host="0.0.0.0",
+        port=8000,
+        reload=True,
+        reload_dirs=["gateway", "services", "shared"]
+    )
