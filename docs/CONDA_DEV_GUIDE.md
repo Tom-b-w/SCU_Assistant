@@ -57,12 +57,14 @@ npm install
 ```bash
 cd backend
 conda activate scu
-python start_dev.py --reload
+
+# 以下两种方式任选其一：
+python start_dev.py --reload             # 方式一：启动脚本
+uvicorn gateway.main:app --reload        # 方式二：直接 uvicorn（效果相同）
 ```
 
 看到以下输出说明成功：
 ```
-[dev] 热重载已启用 (watchfiles)
 INFO:     Uvicorn running on http://0.0.0.0:8000
 ```
 
@@ -83,6 +85,13 @@ npm run dev
 
 - 页面：http://localhost:3000
 - API 文档：http://localhost:8000/docs
+
+### 登录测试
+
+项目默认 Mock 模式，无需真实教务账号：
+- **学号**：任意 5 位以上数字（如 `20231234567`）
+- **密码**：任意（如 `123456`）
+- **验证码**：任意（如 `abcd`）
 
 ## 三、开发体验
 
@@ -133,7 +142,30 @@ git checkout feat/你的分支
 git merge main
 ```
 
-## 五、常见问题
+## 五、提交前检查
+
+推送代码前务必通过 lint 和 build：
+
+```bash
+cd frontend
+npm run lint     # 应该 0 errors
+npm run build    # 应该无报错
+```
+
+## 六、Fork 用户同步上游
+
+```bash
+# 首次添加上游（只需一次）
+git remote add upstream https://github.com/Tom-b-w/SCU_Assistant.git
+
+# 每次开发前同步
+git fetch upstream
+git merge upstream/master
+cd backend && pip install -e ".[dev]"
+cd ../frontend && npm install
+```
+
+## 七、常见问题
 
 ### Q: `conda activate scu` 提示 "conda 不是内部命令"
 
@@ -178,6 +210,15 @@ netstat -ano | findstr :8000
 taskkill /F /PID <PID号>
 ```
 
+### Q: 启动后端报连接 PostgreSQL / Redis 失败
+
+检查 `backend/` 目录下是否存在 `.env` 文件。如果有，它会覆盖 `.env.dev` 导致使用 PostgreSQL 配置：
+```bash
+# 删除或重命名 .env
+del backend\.env           # Windows CMD
+rm backend/.env            # Git Bash
+```
+
 ### Q: git pull 之后报错
 
 可能是依赖更新了，重新安装：
@@ -186,7 +227,15 @@ cd backend && conda activate scu && pip install -e ".[dev]"
 cd ../frontend && npm install
 ```
 
-## 六、技术原理（了解即可）
+### Q: ESLint / Build 报错
+
+先同步最新代码再检查：
+```bash
+git pull origin master
+cd frontend && npm install && npm run lint
+```
+
+## 八、技术原理（了解即可）
 
 项目通过 `.env.dev` 配置了轻量替代方案，无需真实数据库服务：
 
