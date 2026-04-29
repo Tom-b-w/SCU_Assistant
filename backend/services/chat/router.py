@@ -20,8 +20,7 @@ async def create_chat_completion(
     user=Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """发送消息获取 AI 回复（chat_rate_limit_per_minute）"""
-    # Rate limit check
+    """发送消息获取 AI 回复（集成意图路由）"""
     rate_key = f"rate:chat:{user.student_id}"
     allowed = await check_rate_limit(
         redis_client,
@@ -43,7 +42,11 @@ async def create_chat_completion(
         redis_client=redis_client,
     )
 
-    return ChatResponse(reply=result["reply"], usage=result["usage"])
+    return ChatResponse(
+        reply=result["reply"],
+        usage=result["usage"],
+        tool_calls=result.get("tool_calls", []),
+    )
 
 
 @router.post("/stream")
@@ -52,7 +55,7 @@ async def create_chat_stream(
     user=Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """SSE 流式对话"""
+    """SSE 流式对话（集成意图路由，支持工具调用通知）"""
     rate_key = f"rate:chat:{user.student_id}"
     allowed = await check_rate_limit(
         redis_client,

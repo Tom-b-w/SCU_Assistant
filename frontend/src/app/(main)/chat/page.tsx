@@ -5,6 +5,11 @@ import { useSearchParams } from "next/navigation";
 import { useAuthStore } from "@/stores/auth-store";
 import { useChatStore, type ChatMessage as StoredMessage } from "@/stores/chat-store";
 import {
+  sendChatMessageStream,
+  getToolDisplayName,
+  type ChatMessage,
+} from "@/lib/chat";
+import {
   Send,
   Sparkles,
   User,
@@ -13,8 +18,9 @@ import {
   BookOpen,
   Bus,
   RotateCcw,
+  Loader2,
+  Check,
 } from "lucide-react";
-import { sendChatMessageStream, type ChatMessage } from "@/lib/chat";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
@@ -36,7 +42,7 @@ export default function ChatPage() {
 function ChatPageInner() {
   const user = useAuthStore((state) => state.user);
   const searchParams = useSearchParams();
-  const { messages: storedMessages, addMessage, appendToLastMessage, clearMessages } = useChatStore();
+  const { messages: storedMessages, addMessage, appendToLastMessage, addToolCall, updateToolCallStatus, clearMessages } = useChatStore();
   const [input, setInput] = useState("");
   const [isTyping, setIsTyping] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -47,7 +53,6 @@ function ChatPageInner() {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [storedMessages]);
 
-  // 从搜索栏跳转过来时自动发送问题
   useEffect(() => {
     const q = searchParams.get("q");
     if (q && !initialQuerySent.current) {
@@ -71,13 +76,13 @@ function ChatPageInner() {
     setInput("");
     setIsTyping(true);
 
-    // 先添加一个空的 AI 消息占位，流式追加内容
     const aiMsgId = (Date.now() + 1).toString();
     const aiMsg: StoredMessage = {
       id: aiMsgId,
       role: "assistant",
       content: "",
       timestamp: new Date().toISOString(),
+      toolCalls: [],
     };
     addMessage(aiMsg);
 
@@ -98,6 +103,16 @@ function ChatPageInner() {
       (errorText) => {
         appendToLastMessage(errorText || "抱歉，发送消息时出现错误，请稍后重试。");
         setIsTyping(false);
+      },
+      (name, args) => {
+        addToolCall(aiMsgId, {
+          name,
+          displayName: getToolDisplayName(name),
+          status: "calling",
+        });
+      },
+      (name) => {
+        updateToolCallStatus(aiMsgId, name, "completed");
       },
     );
   }
@@ -172,6 +187,29 @@ function ChatPageInner() {
                       : "bg-white ring-1 ring-black/[0.04] text-foreground shadow-sm dark:bg-gray-900 dark:ring-white/[0.06]"
                   }`}
                 >
+                  {msg.role === "assistant" && msg.toolCalls && msg.toolCalls.length > 0 && (
+                    <div className="mb-2 flex flex-wrap gap-1.5">
+                      {msg.toolCalls.map((tc) => (
+                        <span
+                          key={tc.name}
+                          className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium transition-colors ${
+                            tc.status === "calling"
+                              ? "bg-blue-50 text-blue-600 dark:bg-blue-950 dark:text-blue-400"
+                              : tc.status === "completed"
+                                ? "bg-green-50 text-green-600 dark:bg-green-950 dark:text-green-400"
+                                : "bg-red-50 text-red-600 dark:bg-red-950 dark:text-red-400"
+                          }`}
+                        >
+                          {tc.status === "calling" ? (
+                            <Loader2 className="h-3 w-3 animate-spin" />
+                          ) : tc.status === "completed" ? (
+                            <Check className="h-3 w-3" />
+                          ) : null}
+                          {tc.displayName}
+                        </span>
+                      ))}
+                    </div>
+                  )}
                   {msg.role === "assistant" ? (
                     <div className="prose prose-sm dark:prose-invert max-w-none prose-p:my-1 prose-ul:my-1 prose-ol:my-1 prose-li:my-0.5 prose-headings:mt-3 prose-headings:mb-1 prose-pre:bg-muted/50 prose-pre:text-foreground prose-code:text-[#C41230] prose-code:before:content-none prose-code:after:content-none">
                       <ReactMarkdown remarkPlugins={[remarkGfm]}>
@@ -189,7 +227,7 @@ function ChatPageInner() {
               </div>
             ))}
 
-            {isTyping && (
+            {isTyping && !(storedMessages.length > 0 && storedMessages[storedMessages.length - 1]?.toolCalls?.some(tc => tc.status === "calling")) && (
               <div className="flex gap-3 animate-slide-up">
                 <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-purple-500 via-blue-500 to-cyan-500 text-white shadow-sm shadow-purple-500/20">
                   <Sparkles className="h-4 w-4" />

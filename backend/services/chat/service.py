@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared.config import settings
 from shared.llm_client import LLMClient
+from services.chat.intent_router import IntentRouter
 from services.chat.schemas import ChatMessage
 
 logger = logging.getLogger(__name__)
@@ -16,6 +17,7 @@ SYSTEM_PROMPT = (
     "你可以帮助学生查询课表、成绩、DDL等校园信息，也可以回答学习和生活方面的问题。"
     "请用友好亲切的语气回答，适当使用emoji让对话更生动。"
     "如果系统已注入了用户的真实数据（课表、成绩等），请直接根据这些数据回答，不要说'我无法查询'。"
+    "当你需要查询具体信息（如知识库搜索、出题、天气、复习计划等），请使用提供的工具。"
 )
 
 _NOT_CONFIGURED_REPLY = (
@@ -51,7 +53,6 @@ async def _build_user_context(student_id: str, user_id: int, db: AsyncSession, r
 
     context_parts = []
 
-    # 1. 今日课表
     try:
         cache_result = await db.execute(
             sa_select(AcademicCache).where(
@@ -75,7 +76,6 @@ async def _build_user_context(student_id: str, user_id: int, db: AsyncSession, r
     except Exception as e:
         logger.debug("读取课表失败: %s", e)
 
-    # 2. 成绩汇总
     try:
         cache_result = await db.execute(
             sa_select(AcademicCache).where(
@@ -89,7 +89,6 @@ async def _build_user_context(student_id: str, user_id: int, db: AsyncSession, r
             total_credits = sum(s.get("credit", 0) for s in scores)
             gpa_sum = sum(s.get("gpa", 0) * s.get("credit", 0) for s in scores)
             avg_gpa = round(gpa_sum / total_credits, 2) if total_credits > 0 else 0
-            # 最近5条成绩
             recent = sorted(scores, key=lambda s: s.get("semester", ""), reverse=True)[:5]
             recent_str = ", ".join(f"{s['course_name']}({s['score']}分)" for s in recent)
             context_parts.append(
@@ -99,7 +98,6 @@ async def _build_user_context(student_id: str, user_id: int, db: AsyncSession, r
     except Exception as e:
         logger.debug("读取成绩失败: %s", e)
 
-    # 3. 待办 DDL
     try:
         now = datetime.now()
         dl_result = await db.execute(
@@ -117,7 +115,6 @@ async def _build_user_context(student_id: str, user_id: int, db: AsyncSession, r
     except Exception as e:
         logger.debug("读取DDL失败: %s", e)
 
-    # 4. 近期考试
     try:
         exam_result = await db.execute(
             sa_select(Exam).where(
@@ -145,18 +142,16 @@ async def chat_completion(
     db: AsyncSession | None = None,
     redis_client=None,
 ) -> dict:
-    """调用 LLM 完成对话，预注入用户数据到 system prompt（RAG方式，不依赖 tool_use）。"""
+    """调用 LLM 完成对话，集成意图路由（Function Calling + RAG 数据注入）。"""
     if not _is_configured():
-        return {"reply": _NOT_CONFIGURED_REPLY, "usage": None}
+        return {"reply": _NOT_CONFIGURED_REPLY, "usage": None, "tool_calls": []}
 
-    # 构建 system prompt
     system_text = SYSTEM_PROMPT
 
     if user_info and db:
         student_id = user_info.get("student_id", "")
         user_id = user_info.get("user_id", 0)
 
-        # 注入用户真实数据
         try:
             user_data = await _build_user_context(student_id, user_id, db, redis_client)
             if user_data:
@@ -164,7 +159,6 @@ async def chat_completion(
         except Exception as e:
             logger.warning("注入用户数据失败: %s", e)
 
-        # 注入用户记忆
         if user_id:
             try:
                 from services.memory.service import get_user_context
@@ -178,24 +172,51 @@ async def chat_completion(
 
     client = _get_llm_client()
     try:
-        result = await client.chat(anthropic_messages, system=system_text)
-        usage = result["usage"]
-        reply = result["text"]
+        if user_info and db:
+            router = IntentRouter(
+                student_id=user_info.get("student_id", ""),
+                user_id=user_info.get("user_id", 0),
+                db=db,
+                redis_client=redis_client,
+            )
+            route_result = await router.route(anthropic_messages, system_text, client)
 
-        logger.info("LLM response: input=%s output=%s, len=%d",
-                    usage.get("input_tokens"), usage.get("output_tokens"), len(reply))
+            tool_calls_info = [
+                {"name": tc.name, "arguments": tc.arguments, "result": tc.result}
+                for tc in route_result.tool_calls
+            ]
 
-        # 异步提取用户记忆（不阻塞响应）
-        if db and user_info and user_info.get("user_id"):
-            _schedule_memory_extraction(messages, db, user_info["user_id"])
+            logger.info(
+                "LLM intent route: iterations=%d, tool_calls=%s, len=%d",
+                route_result.iterations,
+                [tc.name for tc in route_result.tool_calls],
+                len(route_result.text),
+            )
 
-        return {"reply": reply, "usage": usage}
+            if db and user_info and user_info.get("user_id"):
+                _schedule_memory_extraction(messages, db, user_info["user_id"])
+
+            return {
+                "reply": route_result.text,
+                "usage": route_result.usage,
+                "tool_calls": tool_calls_info,
+            }
+        else:
+            result = await client.chat(anthropic_messages, system=system_text)
+            usage = result["usage"]
+            reply = result["text"]
+
+            logger.info("LLM response: input=%s output=%s, len=%d",
+                        usage.get("input_tokens"), usage.get("output_tokens"), len(reply))
+
+            return {"reply": reply, "usage": usage, "tool_calls": []}
 
     except Exception as e:
         logger.error("LLM API error: %s", e, exc_info=True)
         return {
             "reply": "抱歉，AI 服务出现异常，请稍后再试～",
             "usage": None,
+            "tool_calls": [],
         }
     finally:
         await client.close()
@@ -208,7 +229,7 @@ async def chat_completion_stream(
     db: AsyncSession | None = None,
     redis_client=None,
 ):
-    """流式调用 LLM，yield SSE 格式数据。"""
+    """流式调用 LLM，集成意图路由，yield SSE 格式数据。"""
     if not _is_configured():
         yield f"data: {json.dumps({'type': 'text', 'content': _NOT_CONFIGURED_REPLY})}\n\n"
         yield "data: {\"type\": \"done\"}\n\n"
@@ -236,23 +257,55 @@ async def chat_completion_stream(
                 pass
 
     anthropic_messages = [{"role": msg.role, "content": msg.content} for msg in messages]
-    client = _get_llm_client()
-    full_reply = ""
-    try:
-        async for chunk in client.chat_stream(anthropic_messages, system=system_text):
-            full_reply += chunk
-            yield f"data: {json.dumps({'type': 'text', 'content': chunk})}\n\n"
-        yield f"data: {json.dumps({'type': 'done'})}\n\n"
 
-        # 异步提取用户记忆
-        if db and user_info and user_info.get("user_id"):
-            _schedule_memory_extraction(messages, db, user_info["user_id"])
+    if user_info and db:
+        router = IntentRouter(
+            student_id=user_info.get("student_id", ""),
+            user_id=user_info.get("user_id", 0),
+            db=db,
+            redis_client=redis_client,
+        )
+        client = _get_llm_client()
+        full_reply = ""
+        try:
+            async for event in router.route_stream(anthropic_messages, system_text, client):
+                event_type = event.get("type")
 
-    except Exception as e:
-        logger.error("LLM stream error: %s", e, exc_info=True)
-        yield f"data: {json.dumps({'type': 'error', 'content': '抱歉，AI 服务出现异常，请稍后再试～'})}\n\n"
-    finally:
-        await client.close()
+                if event_type == "tool_call":
+                    yield f"data: {json.dumps({'type': 'tool_call', 'name': event['name'], 'arguments': event.get('arguments', {})}, ensure_ascii=False)}\n\n"
+
+                elif event_type == "tool_result":
+                    yield f"data: {json.dumps({'type': 'tool_result', 'name': event['name']}, ensure_ascii=False)}\n\n"
+
+                elif event_type == "text":
+                    text = event["content"]
+                    full_reply += text
+                    yield f"data: {json.dumps({'type': 'text', 'content': text}, ensure_ascii=False)}\n\n"
+
+                elif event_type == "done":
+                    yield f"data: {json.dumps({'type': 'done'}, ensure_ascii=False)}\n\n"
+
+            if db and user_info and user_info.get("user_id"):
+                _schedule_memory_extraction(messages, db, user_info["user_id"])
+
+        except Exception as e:
+            logger.error("LLM stream error: %s", e, exc_info=True)
+            yield f"data: {json.dumps({'type': 'error', 'content': '抱歉，AI 服务出现异常，请稍后再试～'})}\n\n"
+        finally:
+            await client.close()
+    else:
+        client = _get_llm_client()
+        full_reply = ""
+        try:
+            async for chunk in client.chat_stream(anthropic_messages, system=system_text):
+                full_reply += chunk
+                yield f"data: {json.dumps({'type': 'text', 'content': chunk})}\n\n"
+            yield f"data: {json.dumps({'type': 'done'})}\n\n"
+        except Exception as e:
+            logger.error("LLM stream error: %s", e, exc_info=True)
+            yield f"data: {json.dumps({'type': 'error', 'content': '抱歉，AI 服务出现异常，请稍后再试～'})}\n\n"
+        finally:
+            await client.close()
 
 
 def _schedule_memory_extraction(messages: list[ChatMessage], db: AsyncSession, user_id: int):

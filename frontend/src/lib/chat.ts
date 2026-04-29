@@ -5,9 +5,16 @@ export interface ChatMessage {
   content: string;
 }
 
+export interface ToolCallInfo {
+  name: string;
+  arguments: Record<string, unknown>;
+  result?: string;
+}
+
 export interface ChatResponse {
   reply: string;
-  usage: { prompt_tokens: number; completion_tokens: number; total_tokens: number } | null;
+  usage: { input_tokens: number; output_tokens: number } | null;
+  tool_calls: ToolCallInfo[];
 }
 
 export async function sendChatMessage(messages: ChatMessage[]): Promise<ChatResponse> {
@@ -17,16 +24,29 @@ export async function sendChatMessage(messages: ChatMessage[]): Promise<ChatResp
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
-/**
- * SSE 流式对话 — 逐 token 回调
- */
+const TOOL_NAME_MAP: Record<string, string> = {
+  get_today_schedule: "查询课表",
+  get_grades_summary: "查询成绩",
+  get_deadlines: "查询待办",
+  search_knowledge_base: "搜索知识库",
+  generate_quiz: "生成练习题",
+  query_exams: "查询考试",
+  generate_review_plan: "生成复习计划",
+  query_weather: "查询天气",
+};
+
+export function getToolDisplayName(name: string): string {
+  return TOOL_NAME_MAP[name] || name;
+}
+
 export async function sendChatMessageStream(
   messages: ChatMessage[],
   onChunk: (text: string) => void,
   onDone: () => void,
   onError: (msg: string) => void,
+  onToolCall?: (name: string, args: Record<string, unknown>) => void,
+  onToolResult?: (name: string) => void,
 ): Promise<void> {
-  // 获取 token
   const { useAuthStore } = await import("@/stores/auth-store");
   const token = useAuthStore.getState().accessToken;
 
@@ -76,6 +96,10 @@ export async function sendChatMessageStream(
         } else if (event.type === "error") {
           onError(event.content || "AI 服务异常");
           return;
+        } else if (event.type === "tool_call") {
+          onToolCall?.(event.name, event.arguments || {});
+        } else if (event.type === "tool_result") {
+          onToolResult?.(event.name);
         }
       } catch {
         // skip malformed JSON

@@ -2,14 +2,21 @@ from pydantic import BaseModel
 
 
 class ChatMessage(BaseModel):
-    role: str  # "user" or "assistant"
+    role: str
     content: str
 
 
 class ChatRequest(BaseModel):
-    messages: list[ChatMessage]  # 对话历史
+    messages: list[ChatMessage]
+
+
+class ToolCallInfo(BaseModel):
+    name: str
+    arguments: dict
+    result: str | None = None
 
 
 class ChatResponse(BaseModel):
     reply: str
-    usage: dict | None = None  # token usage
+    usage: dict | None = None
+    tool_calls: list[ToolCallInfo] = []
