@@ -1,5 +1,6 @@
 """每日晨报服务 — 聚合多数据源，调用 LLM 生成个性化早间简报"""
 
+import asyncio
 import logging
 from datetime import date, datetime
 
@@ -14,6 +15,7 @@ from shared.llm_client import LLMClient
 from shared.models import AcademicCache
 
 logger = logging.getLogger(__name__)
+BRIEFING_LLM_TIMEOUT_SECONDS = 8.0
 
 WEEKDAY_NAMES = ["星期一", "星期二", "星期三", "星期四", "星期五", "星期六", "星期日"]
 
@@ -140,15 +142,24 @@ async def generate_briefing(session: AsyncSession, user_id: int) -> dict:
 
         client = _get_llm_client()
         try:
-            result = await client.chat(
-                messages=[{"role": "user", "content": prompt}],
-                system="你是四川大学智能助手的晨报播报员，用简洁亲切的中文为学生播报每日信息。",
-                max_tokens=512,
-                temperature=0.7,
+            result = await asyncio.wait_for(
+                client.chat(
+                    messages=[{"role": "user", "content": prompt}],
+                    system="你是四川大学智能助手的晨报播报员，用简洁亲切的中文为学生播报每日信息。",
+                    max_tokens=512,
+                    temperature=0.7,
+                ),
+                timeout=BRIEFING_LLM_TIMEOUT_SECONDS,
             )
             briefing_text = result.get("text", "")
         finally:
             await client.close()
+    except TimeoutError:
+        logger.warning(
+            "LLM briefing timed out after %.1fs, falling back to summary",
+            BRIEFING_LLM_TIMEOUT_SECONDS,
+        )
+        briefing_text = data_summary
     except Exception as e:
         logger.error("LLM 生成晨报失败: %s", e, exc_info=True)
         # 降级：直接使用数据摘要

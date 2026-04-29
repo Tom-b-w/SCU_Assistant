@@ -13,6 +13,8 @@ export interface BriefingData {
 }
 
 export async function getBriefing(): Promise<BriefingData> {
-  const { data } = await api.get<BriefingData>("/api/briefing");
+  const { data } = await api.get<BriefingData>("/api/briefing", {
+    timeout: 8000,
+  });
   return data;
 }

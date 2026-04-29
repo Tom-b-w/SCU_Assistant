@@ -83,20 +83,23 @@ export default function DashboardPage() {
   useEffect(() => {
     if (!isAuthenticated) return;
 
+    let cancelled = false;
+
     async function fetchData() {
       setLoading(true);
       setError("");
       try {
-        const [scheduleData, scoresData, planData, briefingData] = await Promise.allSettled([
+        const [scheduleData, scoresData, planData] = await Promise.allSettled([
           getSchedule(),
           getScores(),
           getPlanCompletion(),
-          getBriefing(),
         ]);
+
+        if (cancelled) return;
+
         if (scheduleData.status === "fulfilled") setCourses(scheduleData.value.courses);
         if (scoresData.status === "fulfilled") setScores(scoresData.value.scores);
         if (planData.status === "fulfilled") setPlanCompletion(planData.value);
-        if (briefingData.status === "fulfilled") setBriefing(briefingData.value);
 
         // Check if academic data failed (briefing failure is non-critical)
         if (scheduleData.status === "rejected") {
@@ -107,11 +110,27 @@ export default function DashboardPage() {
       } catch {
         setError("获取教务数据失败，请稍后重试");
       } finally {
-        setLoading(false);
+        if (!cancelled) {
+          setLoading(false);
+        }
       }
     }
 
     fetchData();
+
+    getBriefing()
+      .then((data) => {
+        if (!cancelled) {
+          setBriefing(data);
+        }
+      })
+      .catch(() => {
+        // Briefing is optional on the home page.
+      });
+
+    return () => {
+      cancelled = true;
+    };
   }, [isAuthenticated]);
 
   const todayCourses = courses.filter((c) => c.weekday === todayWeekday);

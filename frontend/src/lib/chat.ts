@@ -22,7 +22,12 @@ export async function sendChatMessage(messages: ChatMessage[]): Promise<ChatResp
   return response.data;
 }
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+function resolveChatApiUrl(): string {
+  if (typeof window !== "undefined") {
+    return `${window.location.protocol}//${window.location.hostname}:8000`;
+  }
+  return process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+}
 
 const TOOL_NAME_MAP: Record<string, string> = {
   get_today_schedule: "查询课表",
@@ -49,8 +54,9 @@ export async function sendChatMessageStream(
 ): Promise<void> {
   const { useAuthStore } = await import("@/stores/auth-store");
   const token = useAuthStore.getState().accessToken;
+  const apiUrl = resolveChatApiUrl();
 
-  const resp = await fetch(`${API_URL}/api/chat/stream`, {
+  const resp = await fetch(`${apiUrl}/api/chat/stream`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",

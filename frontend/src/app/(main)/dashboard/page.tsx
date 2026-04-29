@@ -19,22 +19,37 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    async function load() {
-      setLoading(true);
-      try {
-        const [briefingData, weatherData] = await Promise.allSettled([
-          getBriefing(),
-          getWeather("成都"),
-        ]);
-        if (briefingData.status === "fulfilled") setBriefing(briefingData.value);
-        if (weatherData.status === "fulfilled") setWeather(weatherData.value);
-      } catch {
+    let cancelled = false;
+    setLoading(true);
+
+    getBriefing()
+      .then((data) => {
+        if (!cancelled) {
+          setBriefing(data);
+        }
+      })
+      .catch(() => {
         // silently fail
-      } finally {
-        setLoading(false);
-      }
-    }
-    load();
+      });
+
+    getWeather("成都")
+      .then((data) => {
+        if (!cancelled) {
+          setWeather(data);
+        }
+      })
+      .catch(() => {
+        // silently fail
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setLoading(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   if (loading) {

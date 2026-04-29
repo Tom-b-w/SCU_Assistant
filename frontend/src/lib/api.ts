@@ -1,9 +1,36 @@
 import axios from "axios";
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+function resolveApiUrl(): string {
+  const envUrl = process.env.NEXT_PUBLIC_API_URL;
+
+  if (typeof window !== "undefined") {
+    const { protocol, hostname } = window.location;
+
+    if (!envUrl) {
+      return `${protocol}//${hostname}:8000`;
+    }
+
+    try {
+      const parsed = new URL(envUrl);
+      const isLocalEnvHost = parsed.hostname === "localhost" || parsed.hostname === "127.0.0.1";
+      const isLocalPageHost = hostname === "localhost" || hostname === "127.0.0.1";
+
+      if (isLocalEnvHost && isLocalPageHost && parsed.hostname !== hostname) {
+        parsed.hostname = hostname;
+        return parsed.toString().replace(/\/$/, "");
+      }
+
+      return parsed.toString().replace(/\/$/, "");
+    } catch {
+      return envUrl;
+    }
+  }
+
+  return envUrl || "http://localhost:8000";
+}
 
 export const api = axios.create({
-  baseURL: API_URL,
+  baseURL: resolveApiUrl(),
   withCredentials: true,
   headers: {
     "Content-Type": "application/json",
@@ -19,6 +46,7 @@ function getAuthStore() {
 // Request interceptor: attach access token from Zustand store (in-memory)
 api.interceptors.request.use((config) => {
   const token = getAuthStore().getState().accessToken;
+  config.baseURL = resolveApiUrl();
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
   }
