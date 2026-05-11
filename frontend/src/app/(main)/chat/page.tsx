@@ -127,7 +127,7 @@ function ChatPageInner() {
   return (
     <div className="mx-auto flex h-full max-w-3xl flex-col">
       {/* Messages Area */}
-      <div className="flex-1 overflow-y-auto">
+      <div className="flex-1 overflow-y-auto px-4">
         {storedMessages.length === 0 ? (
           /* Empty State */
           <div className="flex h-full flex-col items-center justify-center px-4">
