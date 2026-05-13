@@ -38,6 +38,7 @@ const TOOL_NAME_MAP: Record<string, string> = {
   query_exams: "查询考试",
   generate_review_plan: "生成复习计划",
   query_weather: "查询天气",
+  query_bus_schedule: "查询校车",
 };
 
 export function getToolDisplayName(name: string): string {

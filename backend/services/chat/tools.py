@@ -100,6 +100,18 @@ TOOL_DEFINITIONS_ANTHROPIC = [
             "required": [],
         },
     },
+    {
+        "name": "query_bus_schedule",
+        "description": "查询四川大学校区间校车/班车时刻表，包括华西↔江安、望江↔江安等路线的工作日班次。当用户问校车、班车、交通、怎么去另一个校区时使用。",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "from_campus": {"type": "string", "description": "出发校区：华西、江安、望江"},
+                "to_campus": {"type": "string", "description": "目的校区：华西、江安、望江"},
+            },
+            "required": [],
+        },
+    },
 ]
 
 # 星期几的中文映射
@@ -136,6 +148,8 @@ async def execute_tool(
             return await _exec_generate_review_plan(user_id, tool_args, db)
         elif tool_name == "query_weather":
             return await _exec_query_weather(tool_args)
+        elif tool_name == "query_bus_schedule":
+            return await _exec_query_bus_schedule(tool_args)
         else:
             return json.dumps({"error": f"未知工具: {tool_name}"}, ensure_ascii=False)
     except Exception as e:
@@ -402,4 +416,98 @@ async def _exec_query_weather(tool_args: dict) -> str:
     from services.weather.service import get_weather
     city = tool_args.get("city", "成都")
     result = await get_weather(city)
+    return json.dumps(result, ensure_ascii=False)
+
+
+_BUS_ROUTES = [
+    {
+        "route": "华西 → 江安",
+        "from": "华西校区",
+        "to": "江安校区",
+        "duration": "约50分钟",
+        "schedules": [
+            "07:10", "08:00", "09:00", "10:10", "11:10", "12:10",
+            "13:55", "14:45", "15:35", "16:40", "17:30", "17:50",
+            "18:10", "18:25", "19:35", "20:10", "21:20", "22:15(末班)",
+        ],
+    },
+    {
+        "route": "江安 → 华西",
+        "from": "江安校区",
+        "to": "华西校区",
+        "duration": "约50分钟",
+        "schedules": [
+            "07:00(滚动发班至7:30)", "08:05(行政班)", "09:10", "09:30", "10:05",
+            "12:00", "12:50", "13:00",
+            "14:55", "15:45", "16:25", "16:55", "17:40", "18:25",
+            "18:50", "19:50", "21:10", "22:30(末班)",
+        ],
+    },
+    {
+        "route": "望江 → 江安",
+        "from": "望江校区",
+        "to": "江安校区",
+        "duration": "约40分钟",
+        "schedules": [
+            "07:15", "08:20",
+            "12:10", "13:00",
+            "15:00", "15:40",
+            "16:50", "17:30",
+            "18:50", "19:30", "20:10", "22:05(末班)",
+        ],
+    },
+    {
+        "route": "江安 → 望江",
+        "from": "江安校区",
+        "to": "望江校区",
+        "duration": "约40分钟",
+        "schedules": [
+            "12:10", "13:00",
+            "14:45", "15:35",
+            "16:40", "17:50",
+            "18:10", "19:35",
+            "20:10", "21:20", "22:15(末班)",
+        ],
+    },
+]
+
+_CAMPUS_ALIASES = {
+    "华西": "华西校区", "华西校区": "华西校区",
+    "江安": "江安校区", "江安校区": "江安校区",
+    "望江": "望江校区", "望江校区": "望江校区",
+}
+
+
+async def _exec_query_bus_schedule(tool_args: dict) -> str:
+    """查询校车/班车时刻表"""
+    from_campus = _CAMPUS_ALIASES.get(tool_args.get("from_campus", ""), "")
+    to_campus = _CAMPUS_ALIASES.get(tool_args.get("to_campus", ""), "")
+
+    routes = _BUS_ROUTES
+    if from_campus:
+        routes = [r for r in routes if r["from"] == from_campus]
+    if to_campus:
+        routes = [r for r in routes if r["to"] == to_campus]
+
+    if not routes:
+        all_routes = [f"{r['from']}→{r['to']}" for r in _BUS_ROUTES]
+        return json.dumps({
+            "message": f"未找到匹配的班车路线。当前可用路线：{', '.join(all_routes)}",
+            "available_routes": all_routes,
+        }, ensure_ascii=False)
+
+    result = {
+        "note": "以上为工作日固定班车发车时间，周末及节假日请以现场通知为准",
+        "contact": "车队总调度 85412179 · 望江点 85471138 · 华西点 85415183 · 江安点 18980697556",
+        "routes": [
+            {
+                "route": r["route"],
+                "from": r["from"],
+                "to": r["to"],
+                "duration": r["duration"],
+                "schedules": r["schedules"],
+            }
+            for r in routes
+        ],
+    }
     return json.dumps(result, ensure_ascii=False)

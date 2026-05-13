@@ -186,14 +186,18 @@ class IntentRouter:
             text_content = resp.get("text", "")
 
             if not tool_calls:
-                if iteration == 0 and text_content:
-                    async for chunk in llm_client.chat_stream(
-                        current_messages,
-                        system=system,
-                    ):
-                        yield {"type": "text", "content": chunk}
-                elif text_content:
-                    yield {"type": "text", "content": text_content}
+                if text_content:
+                    if iteration == 0:
+                        try:
+                            async for chunk in llm_client.chat_stream(
+                                current_messages,
+                                system=system,
+                            ):
+                                yield {"type": "text", "content": chunk}
+                        except Exception:
+                            yield {"type": "text", "content": text_content}
+                    else:
+                        yield {"type": "text", "content": text_content}
 
                 yield {"type": "done"}
                 return
