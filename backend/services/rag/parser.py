@@ -1,6 +1,8 @@
 """文档解析：PDF/PPT/TXT -> 文本块"""
 import io
 import logging
+import zipfile
+from xml.etree import ElementTree
 
 logger = logging.getLogger(__name__)
 
@@ -66,6 +68,28 @@ def parse_pptx_bytes(data: bytes, filename: str = "") -> str:
     return "\n\n".join(slides_text)
 
 
+def parse_docx_bytes(data: bytes, filename: str = "") -> str:
+    """解析 DOCX 文档字节流，返回正文和表格文本。"""
+    namespace = {"w": "http://schemas.openxmlformats.org/wordprocessingml/2006/main"}
+    with zipfile.ZipFile(io.BytesIO(data)) as archive:
+        xml_data = archive.read("word/document.xml")
+
+    root = ElementTree.fromstring(xml_data)
+    parts: list[str] = []
+
+    for paragraph in root.findall(".//w:p", namespace):
+        texts = [
+            node.text
+            for node in paragraph.findall(".//w:t", namespace)
+            if node.text
+        ]
+        line = "".join(texts).strip()
+        if line:
+            parts.append(line)
+
+    return "\n".join(parts)
+
+
 def parse_file(data: bytes, filename: str) -> str:
     """根据文件扩展名选择解析器。"""
     ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
@@ -73,6 +97,8 @@ def parse_file(data: bytes, filename: str) -> str:
         return parse_pdf_bytes(data, filename)
     elif ext in ("pptx", "ppt"):
         return parse_pptx_bytes(data, filename)
+    elif ext == "docx":
+        return parse_docx_bytes(data, filename)
     elif ext in ("txt", "md"):
         return data.decode("utf-8", errors="replace")
     else:

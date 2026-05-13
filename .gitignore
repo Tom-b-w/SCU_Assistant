@@ -49,3 +49,9 @@ data/
 
 # Dev SQLite database
 *.db
+
+# Project documents (binary files managed outside git)
+weekly-reports/
+docs/*.docx
+docs/*.pptx
+docs/*.doc

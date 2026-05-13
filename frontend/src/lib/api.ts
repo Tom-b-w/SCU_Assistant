@@ -1,4 +1,5 @@
 import axios from "axios";
+import type { TokenResponse } from "@/types/api";
 
 function resolveApiUrl(): string {
   const envUrl = process.env.NEXT_PUBLIC_API_URL;
@@ -37,6 +38,8 @@ export const api = axios.create({
   },
 });
 
+let refreshPromise: Promise<string> | null = null;
+
 // Lazy accessor to avoid circular dependency with auth-store
 function getAuthStore() {
   // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -60,27 +63,42 @@ api.interceptors.response.use(
     const originalRequest = error.config;
     const status = error.response?.status;
     const errorCode = error.response?.data?.error?.code;
+    const requestUrl = originalRequest?.url || "";
 
     // 教务系统会话过期 — 清除登录态，跳转登录页
     if (status === 403 && errorCode === "SESSION_EXPIRED") {
       getAuthStore().getState().logout();
       if (typeof window !== "undefined") {
-        window.location.href = "/login";
+        window.location.href = "/login?reason=session_expired";
       }
       return Promise.reject(error);
     }
 
-    if (status === 401 && !originalRequest._retry) {
+    if (status === 401 && !originalRequest?._retry && !requestUrl.includes("/api/auth/refresh")) {
       originalRequest._retry = true;
       try {
-        const { data } = await api.post("/api/auth/refresh");
-        getAuthStore().getState().setAccessToken(data.access_token);
-        originalRequest.headers.Authorization = `Bearer ${data.access_token}`;
+        refreshPromise ??= axios
+          .post<TokenResponse>(`${resolveApiUrl()}/api/auth/refresh`, null, {
+            withCredentials: true,
+            headers: { "Content-Type": "application/json" },
+          })
+          .then(({ data }) => {
+            getAuthStore().getState().setUser(data.user, data.access_token);
+            return data.access_token;
+          })
+          .finally(() => {
+            refreshPromise = null;
+          });
+
+        const accessToken = await refreshPromise;
+
+        originalRequest.headers = originalRequest.headers || {};
+        originalRequest.headers.Authorization = `Bearer ${accessToken}`;
         return api(originalRequest);
       } catch {
         getAuthStore().getState().logout();
         if (typeof window !== "undefined") {
-          window.location.href = "/login";
+          window.location.href = "/login?reason=auth_expired";
         }
       }
     }

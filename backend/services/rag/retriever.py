@@ -1,8 +1,9 @@
 """ChromaDB 向量检索"""
 from __future__ import annotations
 
-import chromadb
 import logging
+
+import chromadb
 
 from shared.config import settings
 
@@ -61,3 +62,18 @@ def delete_collection(kb_id: int):
         chroma.delete_collection(collection_name(kb_id))
     except Exception:
         pass
+
+
+def delete_document_chunks(kb_id: int, doc_id: int):
+    """删除某个文档对应的所有向量块。"""
+    chroma = get_chroma()
+    try:
+        col = chroma.get_collection(collection_name(kb_id))
+    except Exception:
+        return
+
+    try:
+        col.delete(where={"doc_id": doc_id})
+        logger.info("KB %d: 删除文档 %d 的向量块", kb_id, doc_id)
+    except Exception as e:
+        logger.warning("KB %d: 删除文档 %d 向量块失败: %s", kb_id, doc_id, e)

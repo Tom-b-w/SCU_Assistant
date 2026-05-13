@@ -71,7 +71,7 @@ async def login(
     )
 
 
-@router.post("/refresh", response_model=dict)
+@router.post("/refresh", response_model=TokenResponse)
 async def refresh_token(
     request: Request,
     response: Response,
@@ -105,7 +105,10 @@ async def refresh_token(
         max_age=settings.jwt_refresh_token_expire_days * 86400,
     )
 
-    return {"access_token": access_token}
+    return TokenResponse(
+        access_token=access_token,
+        user=UserResponse.model_validate(user),
+    )
 
 
 @router.post("/logout", status_code=204)

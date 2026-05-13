@@ -1,5 +1,5 @@
 "use client";
-import { useState, useRef, useEffect, Suspense } from "react";
+import { useCallback, useState, useRef, useEffect, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import { useAuthStore } from "@/stores/auth-store";
 import { useChatStore, type ChatMessage as StoredMessage } from "@/stores/chat-store";
@@ -64,15 +64,7 @@ function ChatPageInner() {
     }
   }, [input]);
 
-  useEffect(() => {
-    const q = searchParams.get("q");
-    if (q && !initialQuerySent.current) {
-      initialQuerySent.current = true;
-      sendMessage(q);
-    }
-  }, [searchParams]);
-
-  async function sendMessage(text?: string) {
+  const sendMessage = useCallback(async (text?: string) => {
     const content = text || input.trim();
     if (!content || isTyping) return;
 
@@ -114,10 +106,30 @@ function ChatPageInner() {
         (name) => addToolCall(aiMsgId, { name, displayName: getToolDisplayName(name), status: "calling" }),
         (name) => updateToolCallStatus(aiMsgId, name, "completed"),
       );
-    } catch (e) {
+    } catch {
       setIsTyping(false);
     }
-  }
+  }, [
+    addMessage,
+    addToolCall,
+    appendToLastMessage,
+    input,
+    isTyping,
+    storedMessages,
+    updateToolCallStatus,
+  ]);
+
+  useEffect(() => {
+    const q = searchParams.get("q");
+    if (q && !initialQuerySent.current) {
+      initialQuerySent.current = true;
+      const timeoutId = window.setTimeout(() => {
+        void sendMessage(q);
+      }, 0);
+
+      return () => window.clearTimeout(timeoutId);
+    }
+  }, [searchParams, sendMessage]);
 
   return (
     <div className="mx-auto flex h-full w-full max-w-4xl flex-col bg-white dark:bg-zinc-950">

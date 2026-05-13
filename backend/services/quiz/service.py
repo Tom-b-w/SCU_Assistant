@@ -2,11 +2,13 @@
 import json
 import logging
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from shared.llm_client import LLMClient
-from shared.config import settings
 from services.rag import embedding, retriever
+from shared.config import settings
+from shared.llm_client import LLMClient
+from shared.models import Document, KnowledgeBase
 
 logger = logging.getLogger(__name__)
 
@@ -14,9 +16,11 @@ QUIZ_SYSTEM_PROMPT = (
     "你是一位专业的大学考试出题老师。根据提供的学习资料生成高质量的考试题目。\n\n"
     "要求：\n"
     "1. 题目必须基于提供的参考资料内容\n"
-    "2. 严格按照指定的题目类型和难度出题\n"
-    "3. 每道题必须包含标准答案和详细解析\n"
-    "4. 返回 JSON 格式，结构如下：\n\n"
+    "2. 不得使用参考资料之外的知识、常识或自行扩展内容\n"
+    "3. 如果参考资料不足以支持出题，返回 {\"questions\": []}\n"
+    "4. 严格按照指定的题目类型和难度出题\n"
+    "5. 每道题必须包含标准答案、详细解析和可追溯的 source\n"
+    "6. 返回 JSON 格式，结构如下：\n\n"
     '{"questions": [{"question": "题目内容", "question_type": "choice|short_answer|essay", '
     '"options": ["A. ...", "B. ...", "C. ...", "D. ..."], "answer": "标准答案", '
     '"explanation": "解析说明", "source": "来源内容摘要"}]}\n\n'
@@ -28,6 +32,16 @@ async def generate_quiz(db: AsyncSession, kb_id: int, user_id: int,
                         topic: str, count: int, difficulty: str,
                         question_type: str) -> dict:
     """从知识库生成测试题"""
+    kb = await db.get(KnowledgeBase, kb_id)
+    if not kb or kb.user_id != user_id:
+        raise ValueError("知识库不存在")
+
+    doc_result = await db.execute(
+        select(Document.id).where(Document.kb_id == kb_id, Document.status == "ready")
+    )
+    if not doc_result.first():
+        return {"questions": [], "topic": topic, "usage": None}
+
     query = topic if topic else "核心知识点 重要概念 关键内容"
     query_emb = (await embedding.get_embeddings([query]))[0]
     results = await retriever.search(kb_id, query_emb, top_k=10)
@@ -44,6 +58,8 @@ async def generate_quiz(db: AsyncSession, kb_id: int, user_id: int,
         f"请根据以上资料出 {count} 道{difficulty}难度的题目。"
         f"题目类型：{question_type}。"
         f"{'主题范围：' + topic if topic else '覆盖资料的核心知识点。'}\n"
+        "所有题目、答案和解析都必须能在参考资料中找到依据。"
+        "如果参考资料没有覆盖主题，返回 {\"questions\": []}。\n"
         f"请直接返回 JSON，不要加 markdown 代码块标记。"
     )
 

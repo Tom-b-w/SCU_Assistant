@@ -1,16 +1,16 @@
 """考试管理服务 — CRUD + LLM 复习计划生成 + 选课推荐"""
 
-import json as _json
 import logging
 from datetime import date, datetime
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from services.academic.schemas import ExamCreate, ExamResponse
+from services.rag import embedding, retriever
 from shared.config import settings
 from shared.llm_client import LLMClient
-from shared.models import Exam, AcademicCache
-from services.academic.schemas import ExamCreate, ExamResponse
+from shared.models import AcademicCache, Document, Exam, KnowledgeBase
 
 logger = logging.getLogger(__name__)
 
@@ -70,8 +70,65 @@ async def delete_exam(session: AsyncSession, user_id: int, exam_id: int) -> bool
     return True
 
 
+def _format_review_plan_sources(results: list[dict]) -> tuple[str, list[dict]]:
+    context = "\n\n---\n\n".join(
+        f"[来源: {item['metadata'].get('filename', '未知')}]\n{item['text']}"
+        for item in results
+    )
+    sources = [
+        {
+            "filename": item["metadata"].get("filename", ""),
+            "text": item["text"][:240],
+            "distance": item.get("distance"),
+        }
+        for item in results
+    ]
+    return context, sources
+
+
+async def _load_review_plan_context(
+    session: AsyncSession,
+    *,
+    user_id: int,
+    kb_id: int,
+    exam: Exam,
+) -> tuple[str, list[dict]] | tuple[None, list[dict]]:
+    kb = await session.get(KnowledgeBase, kb_id)
+    if not kb or kb.user_id != user_id:
+        raise ValueError("知识库不存在")
+
+    doc_result = await session.execute(
+        select(Document.id).where(Document.kb_id == kb_id, Document.status == "ready")
+    )
+    if not doc_result.first():
+        return None, []
+
+    query = " ".join(
+        part
+        for part in (
+            exam.course_name,
+            exam.exam_type,
+            exam.notes or "",
+            "考试重点 复习范围 章节 知识点 题型",
+        )
+        if part
+    )
+    query_emb = (await embedding.get_embeddings([query]))[0]
+    results = await retriever.search(kb_id, query_emb, top_k=12)
+    if not results:
+        return None, []
+    return _format_review_plan_sources(results)
+
+
 async def generate_review_plan(
-    session: AsyncSession, user_id: int, exam_id: int
+    session: AsyncSession,
+    user_id: int,
+    exam_id: int,
+    *,
+    kb_id: int | None = None,
+    daily_hours: float = 3.0,
+    start_date: date | None = None,
+    intensity: str = "standard",
 ) -> dict:
     """调用 LLM 为指定考试生成复习计划"""
     query = select(Exam).where(Exam.id == exam_id, Exam.user_id == user_id)
@@ -80,7 +137,7 @@ async def generate_review_plan(
     if not exam:
         return {"error": "考试记录未找到"}
 
-    today = date.today()
+    today = start_date or date.today()
     days_left = (
         (exam.exam_date.date() - today).days
         if hasattr(exam.exam_date, "date")
@@ -89,23 +146,63 @@ async def generate_review_plan(
     if days_left < 0:
         return {"error": "考试已结束"}
 
-    prompt = f"""请为以下考试生成一份详细的复习计划：
+    kb_context = None
+    sources: list[dict] = []
+    if kb_id is not None:
+        try:
+            kb_context, sources = await _load_review_plan_context(
+                session,
+                user_id=user_id,
+                kb_id=kb_id,
+                exam=exam,
+            )
+        except ValueError as e:
+            return {"error": str(e)}
+
+        if not kb_context:
+            return {
+                "error": "该知识库中没有足够资料生成复习计划，请先上传该课程课件或复习资料"
+            }
+
+    intensity_label = {
+        "light": "轻量",
+        "standard": "标准",
+        "sprint": "冲刺",
+    }.get(intensity, "标准")
+
+    knowledge_boundary = (
+        "【知识库资料】\n"
+        f"{kb_context}\n\n"
+        "请严格基于以上知识库资料制定复习内容。不得补充资料之外的章节、概念、题型或知识点。"
+        "如果某天无法从资料中找到依据，请安排“整理已上传资料/补充课件”。\n\n"
+        if kb_context
+        else ""
+    )
+
+    prompt = f"""{knowledge_boundary}请为以下考试生成一份详细的复习计划：
 - 课程：{exam.course_name}
 - 考试类型：{exam.exam_type}
 - 距离考试还有 {days_left} 天
 - 备注：{exam.notes or "无"}
+- 计划开始日期：{today.isoformat()}
+- 每日可投入时间：{daily_hours} 小时
+- 复习强度：{intensity_label}
 
 请按天数分配复习任务，包含：
 1. 每日复习重点
 2. 推荐复习方法
 3. 时间分配建议
+4. 如果使用了知识库资料，请在任务中标注来源文件
 输出格式为 Markdown。"""
 
     client = _get_llm_client()
     try:
         result = await client.chat(
             messages=[{"role": "user", "content": prompt}],
-            system="你是四川大学的 AI 学习助手，擅长制定复习计划。",
+            system=(
+                "你是四川大学的 AI 学习助手，擅长制定复习计划。"
+                "如果提供了知识库资料，你必须严格基于资料规划，不得编造资料外内容。"
+            ),
             max_tokens=2048,
         )
         text = result["text"].strip()
@@ -118,6 +215,7 @@ async def generate_review_plan(
             "exam": exam.course_name,
             "days_remaining": days_left,
             "plan": text,
+            "sources": sources,
         }
     except Exception as e:
         logger.error("生成复习计划失败: %s", e, exc_info=True)
@@ -154,7 +252,11 @@ async def generate_course_recommendation(session: AsyncSession, user_id: int) ->
 
     # 构建已修课程列表
     completed_courses = [
-        f"{s.get('course_name', '')}({s.get('course_type', '')}, {s.get('credit', 0)}学分, 成绩{s.get('score', '')})"
+        (
+            f"{s.get('course_name', '')}"
+            f"({s.get('course_type', '')}, {s.get('credit', 0)}学分, "
+            f"成绩{s.get('score', '')})"
+        )
         for s in scores_data
     ]
 
@@ -168,7 +270,8 @@ async def generate_course_recommendation(session: AsyncSession, user_id: int) ->
         remaining = max(0, required - earned)
         plan_summary.append(f"  - {name}: 已修{earned}/{required}学分，还需{remaining}学分")
 
-    prompt = f"""请根据以下培养方案完成情况和已修课程，为四川大学计算机学院本科生提供下学期选课建议：
+    prompt = f"""请根据以下培养方案完成情况和已修课程，为四川大学计算机学院本科生
+提供下学期选课建议：
 
 【培养方案进度】
 总学分要求: {plan_data.get('total_required_credits', '未知')}
@@ -191,7 +294,10 @@ async def generate_course_recommendation(session: AsyncSession, user_id: int) ->
     try:
         result = await client.chat(
             messages=[{"role": "user", "content": prompt}],
-            system="你是四川大学教务系统的 AI 选课顾问，熟悉计算机学院培养方案和课程设置。请根据学生的培养方案完成进度和已修课程情况，给出专业、实用的选课建议。",
+            system=(
+                "你是四川大学教务系统的 AI 选课顾问，熟悉计算机学院培养方案和课程设置。"
+                "请根据学生的培养方案完成进度和已修课程情况，给出专业、实用的选课建议。"
+            ),
             max_tokens=2048,
         )
         text = result["text"].strip()

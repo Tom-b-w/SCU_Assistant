@@ -2,10 +2,10 @@ from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from gateway.auth.dependencies import get_current_user
+from services.academic import service as exam_service
 from services.academic.cache_service import fetch_and_cache_all, get_cached
 from services.academic.jwc_client import get_jwc_client
-from services.academic.schemas import ExamCreate, ExamResponse
-from services.academic import service as exam_service
+from services.academic.schemas import ExamCreate, ExamResponse, ReviewPlanRequest
 from shared.cache import redis_client
 from shared.database import get_db
 from shared.exceptions import SessionExpiredError
@@ -154,11 +154,20 @@ async def delete_exam(
 @router.post("/exams/{exam_id}/review-plan")
 async def generate_review_plan(
     exam_id: int,
+    body: ReviewPlanRequest | None = None,
     user=Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     """为指定考试生成 AI 复习计划"""
-    result = await exam_service.generate_review_plan(db, user.id, exam_id)
+    result = await exam_service.generate_review_plan(
+        db,
+        user.id,
+        exam_id,
+        kb_id=body.kb_id if body else None,
+        daily_hours=body.daily_hours if body else 3.0,
+        start_date=body.start_date if body else None,
+        intensity=body.intensity if body else "standard",
+    )
     if "error" in result:
         raise HTTPException(status_code=400, detail=result["error"])
     return result

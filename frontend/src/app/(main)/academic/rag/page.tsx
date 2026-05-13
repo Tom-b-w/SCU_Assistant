@@ -24,9 +24,12 @@ import {
   getKnowledgeBases,
   createKnowledgeBase,
   deleteKnowledgeBase,
+  getDocuments,
   uploadDocument,
+  deleteDocument,
   queryRag,
   type KnowledgeBase,
+  type RagDocument,
   type RagQueryResult,
 } from "@/lib/rag";
 import { generateQuiz, type QuizQuestion } from "@/lib/quiz";
@@ -38,6 +41,18 @@ interface QAMessage {
   role: "user" | "assistant";
   content: string;
   sources?: Array<{ doc_name?: string; filename?: string; score?: number }>;
+}
+
+function getErrorMessage(error: unknown, fallback: string): string {
+  if (
+    typeof error === "object" &&
+    error !== null &&
+    "response" in error
+  ) {
+    const response = (error as { response?: { data?: { detail?: string } } }).response;
+    return response?.data?.detail || fallback;
+  }
+  return fallback;
 }
 
 // ─── Quiz Panel ──────────────────────────────────────────────────────────────
@@ -251,6 +266,9 @@ export default function RagPage() {
   const [selectedKb, setSelectedKb] = useState<KnowledgeBase | null>(null);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<"qa" | "quiz">("qa");
+  const [documents, setDocuments] = useState<RagDocument[]>([]);
+  const [documentsLoading, setDocumentsLoading] = useState(false);
+  const [deletingDocId, setDeletingDocId] = useState<number | null>(null);
 
   // KB creation
   const [showCreateKb, setShowCreateKb] = useState(false);
@@ -284,9 +302,29 @@ export default function RagPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  const fetchDocuments = useCallback(async (kbId: number) => {
+    setDocumentsLoading(true);
+    try {
+      const data = await getDocuments(kbId);
+      setDocuments(data);
+    } catch {
+      setDocuments([]);
+    } finally {
+      setDocumentsLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
     fetchKbs();
   }, [fetchKbs]);
+
+  useEffect(() => {
+    if (!selectedKb) {
+      setDocuments([]);
+      return;
+    }
+    fetchDocuments(selectedKb.id);
+  }, [selectedKb, fetchDocuments]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -315,6 +353,7 @@ export default function RagPage() {
       setKnowledgeBases((prev) => prev.filter((k) => k.id !== kbId));
       if (selectedKb?.id === kbId) {
         setSelectedKb(knowledgeBases.find((k) => k.id !== kbId) || null);
+        setDocuments([]);
       }
     } catch {
       // TODO: toast
@@ -329,13 +368,50 @@ export default function RagPage() {
     try {
       const result = await uploadDocument(selectedKb.id, file);
       setUploadResult(`"${result.filename}" 上传成功，已切分为 ${result.chunk_count} 个片段`);
-      // refresh KB list to update doc count
-      fetchKbs();
-    } catch {
-      setUploadResult("上传失败，请检查文件格式后重试");
+      setDocuments((prev) => [result, ...prev]);
+      setKnowledgeBases((prev) =>
+        prev.map((kb) =>
+          kb.id === selectedKb.id
+            ? { ...kb, document_count: kb.document_count + 1 }
+            : kb
+        )
+      );
+      setSelectedKb((prev) =>
+        prev && prev.id === selectedKb.id
+          ? { ...prev, document_count: prev.document_count + 1 }
+          : prev
+      );
+    } catch (error) {
+      setUploadResult(getErrorMessage(error, "上传失败，请检查文件格式后重试"));
     } finally {
       setUploading(false);
       if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  }
+
+  async function handleDeleteDocument(docId: number) {
+    if (!selectedKb || deletingDocId) return;
+    setDeletingDocId(docId);
+    setUploadResult(null);
+    try {
+      await deleteDocument(selectedKb.id, docId);
+      setDocuments((prev) => prev.filter((doc) => doc.id !== docId));
+      setKnowledgeBases((prev) =>
+        prev.map((kb) =>
+          kb.id === selectedKb.id
+            ? { ...kb, document_count: Math.max(0, kb.document_count - 1) }
+            : kb
+        )
+      );
+      setSelectedKb((prev) =>
+        prev && prev.id === selectedKb.id
+          ? { ...prev, document_count: Math.max(0, prev.document_count - 1) }
+          : prev
+      );
+    } catch (error) {
+      setUploadResult(getErrorMessage(error, "删除失败，请稍后重试"));
+    } finally {
+      setDeletingDocId(null);
     }
   }
 
@@ -486,7 +562,7 @@ export default function RagPage() {
               <input
                 ref={fileInputRef}
                 type="file"
-                accept=".pdf,.pptx,.ppt,.txt,.md"
+                accept=".pdf,.ppt,.pptx,.docx,.txt,.md"
                 onChange={handleFileUpload}
                 className="hidden"
               />
@@ -503,7 +579,7 @@ export default function RagPage() {
                 {uploading ? "上传中..." : "选择文件"}
               </button>
               <p className="mt-1.5 text-[10px] text-muted-foreground/60 text-center">
-                支持 PDF, PPT, TXT, MD
+                支持 PDF, PPTX, DOCX, TXT, MD
               </p>
               {uploadResult && (
                 <div className={`mt-2 flex items-start gap-1.5 rounded-lg px-2.5 py-2 text-[11px] ${
@@ -515,6 +591,49 @@ export default function RagPage() {
                   {uploadResult}
                 </div>
               )}
+
+              <div className="mt-3 border-t border-border/40 pt-3">
+                <div className="mb-2 flex items-center justify-between">
+                  <h3 className="text-xs font-semibold text-muted-foreground">已上传文件</h3>
+                  {documentsLoading && (
+                    <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />
+                  )}
+                </div>
+                {documents.length === 0 ? (
+                  <p className="rounded-lg bg-muted/30 px-2.5 py-3 text-center text-[11px] text-muted-foreground/70">
+                    暂无文件
+                  </p>
+                ) : (
+                  <div className="max-h-56 space-y-1 overflow-y-auto pr-1">
+                    {documents.map((doc) => (
+                      <div
+                        key={doc.id}
+                        className="group flex items-center gap-2 rounded-lg bg-muted/30 px-2.5 py-2"
+                      >
+                        <FileText className="h-3.5 w-3.5 shrink-0 text-violet-500" />
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-[11px] font-medium">{doc.filename}</p>
+                          <p className="text-[10px] text-muted-foreground/70">
+                            {doc.status === "ready" ? `${doc.chunk_count} 个片段` : doc.status}
+                          </p>
+                        </div>
+                        <button
+                          onClick={() => handleDeleteDocument(doc.id)}
+                          disabled={deletingDocId === doc.id}
+                          className="rounded p-1 text-muted-foreground/60 transition-colors hover:bg-red-500/10 hover:text-red-500 disabled:opacity-50"
+                          title="删除文件"
+                        >
+                          {deletingDocId === doc.id ? (
+                            <Loader2 className="h-3 w-3 animate-spin" />
+                          ) : (
+                            <Trash2 className="h-3 w-3" />
+                          )}
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
           )}
         </div>

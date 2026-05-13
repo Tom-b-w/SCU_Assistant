@@ -1,10 +1,10 @@
 """RAG 知识库 API"""
-from fastapi import APIRouter, Depends, UploadFile, File, HTTPException
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from shared.database import get_db
 from gateway.auth.dependencies import get_current_user
-from services.rag import service, schemas
+from services.rag import schemas, service
+from shared.database import get_db
 
 router = APIRouter(prefix="/api/rag", tags=["RAG"])
 
@@ -39,6 +39,31 @@ async def delete_knowledge_base(
         raise HTTPException(404, str(e))
 
 
+@router.get("/kb/{kb_id}/documents", response_model=list[schemas.DocumentResponse])
+async def list_documents(
+    kb_id: int,
+    user=Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    try:
+        return await service.list_documents(db, kb_id, user.id)
+    except ValueError as e:
+        raise HTTPException(404, str(e))
+
+
+@router.delete("/kb/{kb_id}/documents/{doc_id}", status_code=204)
+async def delete_document(
+    kb_id: int,
+    doc_id: int,
+    user=Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    try:
+        await service.delete_document(db, kb_id, doc_id, user.id)
+    except ValueError as e:
+        raise HTTPException(404, str(e))
+
+
 @router.post("/kb/{kb_id}/upload", response_model=schemas.DocumentResponse)
 async def upload_document(
     kb_id: int,
@@ -48,7 +73,7 @@ async def upload_document(
 ):
     if not file.filename:
         raise HTTPException(400, "请选择文件")
-    allowed = (".pdf", ".pptx", ".ppt", ".txt", ".md")
+    allowed = (".pdf", ".pptx", ".ppt", ".docx", ".txt", ".md")
     if not any(file.filename.lower().endswith(ext) for ext in allowed):
         raise HTTPException(400, f"仅支持 {', '.join(allowed)} 格式")
     data = await file.read()

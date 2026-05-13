@@ -20,37 +20,49 @@ export default function DashboardPage() {
 
   useEffect(() => {
     let cancelled = false;
-    setLoading(true);
 
-    getBriefing()
-      .then((data) => {
-        if (!cancelled) {
-          setBriefing(data);
-        }
-      })
-      .catch(() => {
-        // silently fail
-      });
+    async function fetchDashboard() {
+      setLoading(true);
+      const [briefingResult, weatherResult] = await Promise.allSettled([
+        getBriefing(),
+        getWeather("成都"),
+      ]);
 
-    getWeather("成都")
-      .then((data) => {
-        if (!cancelled) {
-          setWeather(data);
-        }
-      })
-      .catch(() => {
-        // silently fail
-      })
-      .finally(() => {
-        if (!cancelled) {
-          setLoading(false);
-        }
-      });
+      if (cancelled) return;
+
+      if (briefingResult.status === "fulfilled") {
+        setBriefing(briefingResult.value);
+      }
+      if (weatherResult.status === "fulfilled") {
+        setWeather(weatherResult.value);
+      }
+
+      setLoading(false);
+    }
+
+    fetchDashboard();
 
     return () => {
       cancelled = true;
     };
   }, []);
+
+  const fallbackBriefing =
+    !briefing && weather
+      ? {
+          date: new Date().toISOString().slice(0, 10),
+          weekday: new Intl.DateTimeFormat("zh-CN", { weekday: "long" }).format(new Date()),
+          briefing: `今天成都${weather.condition}，气温 ${weather.temperature}°C，体感 ${weather.feels_like}°C。${weather.clothing_advice || "出门前留意天气变化。"}\n简报服务暂时未返回完整数据，课程、考试和 DDL 请查看下方统计或稍后刷新。`,
+          data: {
+            schedule_count: 0,
+            deadline_count: 0,
+            exam_count: 0,
+            weather,
+          },
+        }
+      : null;
+
+  const displayBriefing = briefing || fallbackBriefing;
 
   if (loading) {
     return <BriefingSkeleton />;
@@ -66,20 +78,20 @@ export default function DashboardPage() {
         <div>
           <h1 className="text-xl font-bold">每日简报</h1>
           <p className="text-xs text-muted-foreground">
-            {briefing ? `${briefing.date} ${briefing.weekday}` : "今日概况"}
+            {displayBriefing ? `${displayBriefing.date} ${displayBriefing.weekday}` : "今日概况"}
           </p>
         </div>
       </div>
 
       {/* Morning Briefing Card */}
-      {briefing && (
+      {displayBriefing && (
         <div className="rounded-xl bg-gradient-to-br from-teal-500 to-emerald-600 p-6 text-white shadow-lg shadow-teal-500/20">
           <div className="flex items-center gap-2 mb-3">
             <Sparkles className="h-5 w-5" />
             <h2 className="font-semibold">AI 每日简报</h2>
           </div>
           <div className="text-sm leading-relaxed opacity-95">
-            {briefing.briefing.split("\n").map((line, i) => (
+            {displayBriefing.briefing.split("\n").map((line, i) => (
               <p key={i} className={i > 0 ? "mt-2" : ""}>
                 {line}
               </p>
@@ -94,7 +106,7 @@ export default function DashboardPage() {
           <div className="inline-flex rounded-lg bg-emerald-500/10 p-2">
             <CalendarDays className="h-4 w-4 text-emerald-500" />
           </div>
-          <p className="mt-2 text-2xl font-bold">{briefing?.data.schedule_count ?? "--"}</p>
+          <p className="mt-2 text-2xl font-bold">{displayBriefing?.data.schedule_count ?? "--"}</p>
           <p className="text-xs text-muted-foreground">今日课程</p>
         </div>
 
@@ -102,7 +114,7 @@ export default function DashboardPage() {
           <div className="inline-flex rounded-lg bg-orange-500/10 p-2">
             <BookOpen className="h-4 w-4 text-orange-500" />
           </div>
-          <p className="mt-2 text-2xl font-bold">{briefing?.data.deadline_count ?? "--"}</p>
+          <p className="mt-2 text-2xl font-bold">{displayBriefing?.data.deadline_count ?? "--"}</p>
           <p className="text-xs text-muted-foreground">待办 DDL</p>
         </div>
 
@@ -110,7 +122,7 @@ export default function DashboardPage() {
           <div className="inline-flex rounded-lg bg-red-500/10 p-2">
             <Timer className="h-4 w-4 text-red-500" />
           </div>
-          <p className="mt-2 text-2xl font-bold">{briefing?.data.exam_count ?? "--"}</p>
+          <p className="mt-2 text-2xl font-bold">{displayBriefing?.data.exam_count ?? "--"}</p>
           <p className="text-xs text-muted-foreground">近期考试</p>
         </div>
 

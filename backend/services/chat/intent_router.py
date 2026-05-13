@@ -15,15 +15,45 @@ LLM 意图路由器 (Intent Router)
 import json
 import logging
 from dataclasses import dataclass, field
+from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from shared.llm_client import LLMClient
 from services.chat.tools import TOOL_DEFINITIONS_ANTHROPIC, execute_tool
+from shared.llm_client import LLMClient
 
 logger = logging.getLogger(__name__)
 
 MAX_ITERATIONS = 3
+
+WEATHER_KEYWORDS = (
+    "天气",
+    "气温",
+    "温度",
+    "下雨",
+    "降雨",
+    "会不会雨",
+    "穿什么",
+    "穿衣",
+    "冷不冷",
+    "热不热",
+)
+
+RAG_KEYWORDS = (
+    "知识库",
+    "rag",
+    "课件",
+    "ppt",
+    "pdf",
+    "文档",
+    "资料",
+    "讲义",
+    "教材",
+    "复习资料",
+)
+
+KNOWN_WEATHER_CITIES = ("成都", "北京", "上海", "广州", "深圳", "重庆")
+CAMPUS_WEATHER_HINTS = ("望江", "江安", "华西", "川大", "四川大学")
 
 
 @dataclass
@@ -65,6 +95,106 @@ class IntentRouter:
     def get_tool_definitions(self) -> list[dict]:
         return TOOL_DEFINITIONS_ANTHROPIC
 
+    def _latest_user_text(self, messages: list[dict]) -> str:
+        for message in reversed(messages):
+            if message.get("role") != "user":
+                continue
+            content = message.get("content", "")
+            if isinstance(content, str):
+                return content
+            if isinstance(content, list):
+                parts: list[str] = []
+                for block in content:
+                    if isinstance(block, dict):
+                        text = block.get("text") or block.get("content")
+                        if isinstance(text, str):
+                            parts.append(text)
+                return "\n".join(parts)
+        return ""
+
+    def _match_direct_tool(self, messages: list[dict]) -> tuple[str, dict[str, Any]] | None:
+        text = self._latest_user_text(messages).strip()
+        if not text:
+            return None
+
+        text_lower = text.lower()
+        if any(keyword in text for keyword in WEATHER_KEYWORDS):
+            city = "成都"
+            for known_city in KNOWN_WEATHER_CITIES:
+                if known_city in text:
+                    city = known_city
+                    break
+            if any(hint in text for hint in CAMPUS_WEATHER_HINTS):
+                city = "成都"
+            return "query_weather", {"city": city}
+
+        if any(keyword in text_lower for keyword in RAG_KEYWORDS):
+            return "search_knowledge_base", {"question": text}
+
+        return None
+
+    def _format_direct_tool_result(self, tool_name: str, tool_result: str) -> str:
+        try:
+            data = json.loads(tool_result)
+        except json.JSONDecodeError:
+            return tool_result
+
+        if isinstance(data, dict) and data.get("error"):
+            return str(data["error"])
+
+        if tool_name == "query_weather" and isinstance(data, dict):
+            city = data.get("city", "成都")
+            condition = data.get("condition", "未知")
+            temp = data.get("temperature", "未知")
+            feels_like = data.get("feels_like")
+            humidity = data.get("humidity")
+            wind_direction = data.get("wind_direction", "")
+            wind_scale = data.get("wind_scale", "")
+            advice = data.get("clothing_advice", "")
+
+            lines = [f"{city}当前天气：{condition}，气温 {temp}℃。"]
+            if feels_like is not None:
+                lines.append(f"体感温度 {feels_like}℃。")
+            if humidity is not None:
+                lines.append(f"湿度 {humidity}%。")
+            if wind_direction or wind_scale:
+                lines.append(f"风况：{wind_direction}{wind_scale}级。")
+            if advice:
+                lines.append(f"\n穿衣建议：\n{advice}")
+            return "\n".join(lines)
+
+        if tool_name == "search_knowledge_base" and isinstance(data, dict):
+            if data.get("answer"):
+                answer = str(data["answer"])
+                sources = data.get("sources") or []
+                filenames = []
+                for source in sources:
+                    filename = source.get("filename") if isinstance(source, dict) else None
+                    if filename and filename not in filenames:
+                        filenames.append(filename)
+                if filenames:
+                    answer += "\n\n参考来源：" + "、".join(filenames)
+                return answer
+            if data.get("message"):
+                return str(data["message"])
+
+        return json.dumps(data, ensure_ascii=False, indent=2)
+
+    async def _execute_direct_tool(
+        self,
+        tool_name: str,
+        tool_args: dict[str, Any],
+    ) -> tuple[str, str]:
+        tool_result = await execute_tool(
+            tool_name,
+            tool_args,
+            student_id=self.student_id,
+            user_id=self.user_id,
+            redis_client=self.redis_client,
+            db=self.db,
+        )
+        return tool_result, self._format_direct_tool_result(tool_name, tool_result)
+
     async def route(
         self,
         messages: list[dict],
@@ -80,6 +210,19 @@ class IntentRouter:
         """
         result = RouteResult()
         current_messages = list(messages)
+
+        direct_tool = self._match_direct_tool(current_messages)
+        if direct_tool:
+            tool_name, tool_args = direct_tool
+            tool_result, answer = await self._execute_direct_tool(tool_name, tool_args)
+            result.iterations = 1
+            result.text = answer
+            result.tool_calls.append(ToolCallRecord(
+                name=tool_name,
+                arguments=tool_args,
+                result=tool_result,
+            ))
+            return result
 
         for iteration in range(MAX_ITERATIONS):
             result.iterations = iteration + 1
@@ -173,6 +316,21 @@ class IntentRouter:
         current_messages = list(messages)
         all_tool_calls: list[ToolCallRecord] = []
 
+        direct_tool = self._match_direct_tool(current_messages)
+        if direct_tool:
+            tool_name, tool_args = direct_tool
+            yield {"type": "tool_call", "name": tool_name, "arguments": tool_args}
+            tool_result, answer = await self._execute_direct_tool(tool_name, tool_args)
+            all_tool_calls.append(ToolCallRecord(
+                name=tool_name,
+                arguments=tool_args,
+                result=tool_result,
+            ))
+            yield {"type": "tool_result", "name": tool_name}
+            yield {"type": "text", "content": answer}
+            yield {"type": "done"}
+            return
+
         for iteration in range(MAX_ITERATIONS):
             has_tools = iteration == 0
             resp = await llm_client.chat(
@@ -187,17 +345,7 @@ class IntentRouter:
 
             if not tool_calls:
                 if text_content:
-                    if iteration == 0:
-                        try:
-                            async for chunk in llm_client.chat_stream(
-                                current_messages,
-                                system=system,
-                            ):
-                                yield {"type": "text", "content": chunk}
-                        except Exception:
-                            yield {"type": "text", "content": text_content}
-                    else:
-                        yield {"type": "text", "content": text_content}
+                    yield {"type": "text", "content": text_content}
 
                 yield {"type": "done"}
                 return
@@ -254,5 +402,8 @@ class IntentRouter:
                     }],
                 })
 
-        yield {"type": "text", "content": "抱歉，处理过程中工具调用次数过多，请简化您的问题后重试。"}
+        yield {
+            "type": "text",
+            "content": "抱歉，处理过程中工具调用次数过多，请简化您的问题后重试。",
+        }
         yield {"type": "done"}

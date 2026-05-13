@@ -11,13 +11,30 @@ export async function queryRag(kbId: number, question: string, topK = 5): Promis
   return data;
 }
 
-export async function uploadDocument(kbId: number, file: File): Promise<{ id: number; filename: string; chunk_count: number; status: string }> {
+export interface RagDocument {
+  id: number;
+  filename: string;
+  chunk_count: number;
+  status: string;
+  created_at: string;
+}
+
+export async function getDocuments(kbId: number): Promise<RagDocument[]> {
+  const { data } = await api.get<RagDocument[]>(`/api/rag/kb/${kbId}/documents`);
+  return data;
+}
+
+export async function uploadDocument(kbId: number, file: File): Promise<RagDocument> {
   const formData = new FormData();
   formData.append("file", file);
-  const { data } = await api.post(`/api/rag/kb/${kbId}/upload`, formData, {
+  const { data } = await api.post<RagDocument>(`/api/rag/kb/${kbId}/upload`, formData, {
     headers: { "Content-Type": "multipart/form-data" },
   });
   return data;
+}
+
+export async function deleteDocument(kbId: number, docId: number): Promise<void> {
+  await api.delete(`/api/rag/kb/${kbId}/documents/${docId}`);
 }
 
 export interface KnowledgeBase {

@@ -15,7 +15,7 @@ from shared.llm_client import LLMClient
 from shared.models import AcademicCache
 
 logger = logging.getLogger(__name__)
-BRIEFING_LLM_TIMEOUT_SECONDS = 8.0
+BRIEFING_LLM_TIMEOUT_SECONDS = 6.0
 
 WEEKDAY_NAMES = ["星期一", "星期二", "星期三", "星期四", "星期五", "星期六", "星期日"]
 
@@ -111,7 +111,11 @@ async def generate_briefing(session: AsyncSession, user_id: int) -> dict:
         summary_parts.append(f"即将到来的考试（{len(exams)} 门）：")
         for e in exams[:5]:
             exam_name = e.course_name if hasattr(e, "course_name") else e.get("course_name", "")
-            days_left = e.days_remaining if hasattr(e, "days_remaining") else e.get("days_remaining", "?")
+            days_left = (
+                e.days_remaining
+                if hasattr(e, "days_remaining")
+                else e.get("days_remaining", "?")
+            )
             summary_parts.append(f"  - {exam_name}（还剩 {days_left} 天）")
     else:
         summary_parts.append("近期没有考试。")

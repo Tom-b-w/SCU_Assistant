@@ -24,6 +24,14 @@ export interface ReviewPlan {
   exam: string;
   days_remaining: number;
   plan: string;
+  sources?: Array<{ filename?: string; text?: string; distance?: number }>;
+}
+
+export interface ReviewPlanOptions {
+  kb_id?: number;
+  daily_hours?: number;
+  start_date?: string;
+  intensity?: "light" | "standard" | "sprint";
 }
 
 export async function getExams(): Promise<Exam[]> {
@@ -40,7 +48,13 @@ export async function deleteExam(id: number): Promise<void> {
   await api.delete(`/api/academic/exams/${id}`);
 }
 
-export async function getReviewPlan(examId: number): Promise<ReviewPlan> {
-  const { data } = await api.post<ReviewPlan>(`/api/academic/exams/${examId}/review-plan`);
+export async function getReviewPlan(
+  examId: number,
+  options: ReviewPlanOptions = {},
+): Promise<ReviewPlan> {
+  const { data } = await api.post<ReviewPlan>(
+    `/api/academic/exams/${examId}/review-plan`,
+    options,
+  );
   return data;
 }

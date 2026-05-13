@@ -14,6 +14,7 @@
 """
 
 import hashlib
+import html as html_lib
 import json
 import logging
 import re
@@ -37,6 +38,80 @@ def _get_field(item: dict, *keys, default=""):
         if v is not None and v != "":
             return v
     return default
+
+
+PROFILE_LABELS = {
+    "学号",
+    "姓名",
+    "姓名拼音",
+    "英文姓名",
+    "证件号码",
+    "年级",
+    "院系",
+    "专业",
+    "专业方向",
+    "班级",
+    "校区",
+    "辅修专业",
+    "第二学位专业",
+    "是否有学籍",
+    "是否有国家学籍",
+    "学生类别",
+    "学籍状态",
+    "学科门类",
+    "特殊学生类型",
+    "收费类别",
+    "分流方向",
+    "培养方式",
+    "入学日期",
+    "因材施教",
+    "培养层次",
+    "是否离校",
+    "是否应届毕业",
+    "入学年级",
+    "学制类型",
+    "学生类型",
+    "是否留学生",
+    "性别",
+    "民族",
+    "政治面貌",
+    "国家/地区",
+    "授课语种",
+    "出生日期",
+    "籍贯",
+    "外语语种",
+}
+
+
+def _html_to_text(html: str) -> str:
+    text = re.sub(r"<script[\s\S]*?</script>", " ", html, flags=re.I)
+    text = re.sub(r"<style[\s\S]*?</style>", " ", text, flags=re.I)
+    text = re.sub(r"<[^>]+>", " ", text)
+    text = html_lib.unescape(text)
+    return re.sub(r"\s+", " ", text).strip()
+
+
+def _extract_profile_value(text: str, label: str) -> str | None:
+    tokens = text.split()
+    start = 0
+    for marker in ("学籍信息", "修改信息"):
+        try:
+            start = max(start, tokens.index(marker))
+        except ValueError:
+            pass
+
+    for idx in range(start, len(tokens) - 1):
+        if tokens[idx] != label:
+            continue
+        values: list[str] = []
+        for token in tokens[idx + 1:]:
+            if token in PROFILE_LABELS:
+                break
+            values.append(token)
+        value = " ".join(values).strip()
+        if value:
+            return value
+    return None
 
 
 class BaseJwcClient(ABC):
@@ -124,7 +199,11 @@ class RealJwcClient(BaseJwcClient):
 
             # 提取负载均衡 cookie
             lb_value = resp.cookies.get("XUANKE_LB", "")
-            logger.info("获取到教务系统会话 cookie: %s..., LB: %s", session_value[:12], lb_value[:12] if lb_value else "NONE")
+            logger.info(
+                "获取到教务系统会话 cookie: %s..., LB: %s",
+                session_value[:12],
+                lb_value[:12] if lb_value else "NONE",
+            )
 
             # 提取 tokenValue 隐藏字段
             token_match = re.search(r'name="tokenValue"\s*value="([^"]+)"', resp.text)
@@ -169,20 +248,29 @@ class RealJwcClient(BaseJwcClient):
             lb_value = session_data.get("lb", "")
         except (json.JSONDecodeError, KeyError):
             # 兼容旧格式 (纯 cookie 值)
-            session_value = session_data_str if isinstance(session_data_str, str) else session_data_str.decode()
+            session_value = (
+                session_data_str
+                if isinstance(session_data_str, str)
+                else session_data_str.decode()
+            )
             token_value = ""
 
-        # 教务系统密码加密: hex_md5(hex_md5(pwd+salt), ver=1.8) + '*' + hex_md5(hex_md5(pwd, ver=1.8), ver=1.8)
+        # 教务系统密码加密:
+        # hex_md5(hex_md5(pwd+salt), ver=1.8) + '*' + hex_md5(hex_md5(pwd, ver=1.8), ver=1.8)
         # ver=1.8 不加盐, 否则加盐 "{Urp602019}"
-        SALT = "{Urp602019}"
-        md5_with_salt = hashlib.md5((password + SALT).encode()).hexdigest()
+        salt = "{Urp602019}"
+        md5_with_salt = hashlib.md5((password + salt).encode()).hexdigest()
         md5_no_salt = hashlib.md5(password.encode()).hexdigest()
         part1 = hashlib.md5(md5_with_salt.encode()).hexdigest()
         part2 = hashlib.md5(md5_no_salt.encode()).hexdigest()
         md5_password = f"{part1}*{part2}"
 
         # 构造包含 LB cookie 的 session JSON 以初始化客户端
-        init_session = json.dumps({"session": session_value, "lb": lb_value}) if lb_value else session_value
+        init_session = (
+            json.dumps({"session": session_value, "lb": lb_value})
+            if lb_value
+            else session_value
+        )
         async with self._make_http_client(init_session) as client:
             client.headers["Referer"] = f"{self.BASE_URL}/login"
 
@@ -195,9 +283,15 @@ class RealJwcClient(BaseJwcClient):
             if token_value:
                 post_data["tokenValue"] = token_value
 
-            logger.info("尝试登录: student_id=%s, captcha=%s, j_password长度=%d, cookie=%s..., token=%s...",
-                        student_id, captcha, len(md5_password),
-                        session_value[:12], token_value[:12] if token_value else "NONE")
+            logger.info(
+                "尝试登录: student_id=%s, captcha=%s, j_password长度=%d, "
+                "cookie=%s..., token=%s...",
+                student_id,
+                captcha,
+                len(md5_password),
+                session_value[:12],
+                token_value[:12] if token_value else "NONE",
+            )
 
             # 第一步: POST 登录，不自动跟随重定向以便检查结果
             resp = await client.post(
@@ -225,14 +319,22 @@ class RealJwcClient(BaseJwcClient):
 
             # 登录成功 — 跟随重定向，cookie jar 自动携带 session
             if location:
-                follow_url = location if location.startswith("http") else f"{self.BASE_URL}{location}"
+                follow_url = (
+                    location
+                    if location.startswith("http")
+                    else f"{self.BASE_URL}{location}"
+                )
                 follow_resp = await client.get(follow_url)
                 # 更新为最新的 session cookie
                 new_session = self._extract_session_cookie(follow_resp) or new_session
                 client.cookies[SESSION_COOKIE_NAME] = new_session
                 # 更新 LB cookie
                 new_lb = follow_resp.cookies.get("XUANKE_LB") or lb_value
-                logger.info("跟随重定向后 session: %s..., LB: %s", new_session[:12], new_lb[:12] if new_lb else "NONE")
+                logger.info(
+                    "跟随重定向后 session: %s..., LB: %s",
+                    new_session[:12],
+                    new_lb[:12] if new_lb else "NONE",
+                )
 
             # 存储已认证会话（30分钟过期）— JSON 格式包含 LB cookie
             auth_key = f"jwc_auth:{student_id}"
@@ -253,63 +355,52 @@ class RealJwcClient(BaseJwcClient):
         """从教务系统首页及个人信息页提取学生基本信息"""
         info: dict = {"name": "同学", "campus": None, "major": None, "grade": None}
         try:
-            # 1. 从学生首页提取姓名
-            resp = await client.get(f"{self.BASE_URL}/student/index")
+            # 1. 从登录后的首页提取姓名。教务系统当前首页是 /index，不是 /student/index。
+            resp = await client.get(f"{self.BASE_URL}/index")
             html = resp.text
+            text = _html_to_text(html)
 
             for pattern in [
+                r"欢迎您[，,]\s*([^\s<]+)",
                 r"欢迎.*?(\S+?)\s*同学",
                 r"姓名[：:]\s*(\S+)",
                 r'class="user-name"[^>]*>([^<]+)',
                 r'id="welcomeMsg"[^>]*>[^<]*?(\S+)\s*同学',
             ]:
-                m = re.search(pattern, html)
+                m = re.search(pattern, html) or re.search(pattern, text)
                 if m:
                     info["name"] = m.group(1).strip()
                     break
 
-            # 2. 尝试从个人信息页面提取更多字段
+            # 2. 从学籍信息页面提取更多字段。该页主要是标签和值相邻的 HTML 文本。
             try:
                 profile_resp = await client.get(
                     f"{self.BASE_URL}/student/rollManagement/rollInfo/index",
                 )
                 profile_html = profile_resp.text
                 logger.info("个人信息页面长度: %d", len(profile_html))
+                profile_text = _html_to_text(profile_html)
 
-                # 提取专业
-                for p in [
-                    r"专业[：:]\s*([^<\s]+)",
-                    r"zydm_display[^>]*>([^<]+)",
-                    r'majorName["\']?\s*[：:>]\s*([^<"\s]+)',
-                    r"专\s*业.*?<[^>]*>([^<]{2,20})</",
-                ]:
-                    m = re.search(p, profile_html)
-                    if m and m.group(1).strip():
-                        info["major"] = m.group(1).strip()
-                        break
+                profile_name = _extract_profile_value(profile_text, "姓名")
+                if profile_name and info["name"] == "同学":
+                    info["name"] = profile_name
 
-                # 提取年级/入学年份
-                for p in [
-                    r"年级[：:]\s*(\d{4})",
-                    r"入学年份[：:]\s*(\d{4})",
-                    r"grade[\"']?\s*[：:>]\s*(\d{4})",
-                    r"njdm_display[^>]*>(\d{4})",
-                ]:
-                    m = re.search(p, profile_html)
+                major = _extract_profile_value(profile_text, "专业")
+                if major:
+                    info["major"] = major
+
+                grade = _extract_profile_value(profile_text, "年级") or _extract_profile_value(
+                    profile_text,
+                    "入学年级",
+                )
+                if grade:
+                    m = re.search(r"\d{4}", grade)
                     if m:
-                        info["grade"] = int(m.group(1))
-                        break
+                        info["grade"] = int(m.group(0))
 
-                # 提取校区
-                for p in [
-                    r"校区[：:]\s*([^<\s]+)",
-                    r"campus[\"']?\s*[：:>]\s*([^<\"\s]+)",
-                    r"xqdm_display[^>]*>([^<]+)",
-                ]:
-                    m = re.search(p, profile_html)
-                    if m and m.group(1).strip():
-                        info["campus"] = m.group(1).strip()
-                        break
+                campus = _extract_profile_value(profile_text, "校区")
+                if campus:
+                    info["campus"] = campus
 
                 logger.info("提取到学生信息: name=%s, major=%s, grade=%s, campus=%s",
                             info["name"], info["major"], info["grade"], info["campus"])
@@ -359,7 +450,10 @@ class RealJwcClient(BaseJwcClient):
                     return []
 
                 data = resp.json()
-                logger.info("课表数据键: %s", list(data.keys()) if isinstance(data, dict) else type(data).__name__)
+                logger.info(
+                    "课表数据键: %s",
+                    list(data.keys()) if isinstance(data, dict) else type(data).__name__,
+                )
 
                 return self._parse_schedule(data)
             except Exception as e:
@@ -574,7 +668,8 @@ class RealJwcClient(BaseJwcClient):
         - lnList: 按学期分组的成绩列表
           - lnList[i].cjList: 该学期的课程成绩数组
           - lnList[i].cjlx / zxjxjhh: 学期标识
-        - 每门课程: courseName, courseScore/cj, credit, gradePointScore, courseAttributeName, gradeName
+        - 每门课程: courseName, courseScore/cj, credit, gradePointScore,
+          courseAttributeName, gradeName
         """
         scores = []
 
@@ -823,7 +918,11 @@ class MockJwcClient(BaseJwcClient):
         for _ in range(80):
             nx = rnd.randint(0, width - 1)
             ny = rnd.randint(0, height - 1)
-            pixels[ny * width + nx] = (rnd.randint(0, 200), rnd.randint(0, 200), rnd.randint(0, 200))
+            pixels[ny * width + nx] = (
+                rnd.randint(0, 200),
+                rnd.randint(0, 200),
+                rnd.randint(0, 200),
+            )
 
         raw_data = b""
         for y in range(height):
@@ -908,7 +1007,8 @@ class MockJwcClient(BaseJwcClient):
             {"course_name": "计算机网络", "teacher": "王建国教授", "location": "三教 A108",
              "weekday": 5, "start_section": 3, "end_section": 4, "weeks": "1-16周",
              "course_type": "必修", "campus": "望江", "is_scheduled": True},
-            {"course_name": "Python 程序设计", "teacher": "陈凯教授", "location": "计算机楼 机房301",
+            {"course_name": "Python 程序设计", "teacher": "陈凯教授",
+             "location": "计算机楼 机房301",
              "weekday": 5, "start_section": 5, "end_section": 6, "weeks": "1-12周",
              "course_type": "选修", "campus": "望江", "is_scheduled": True},
         ]

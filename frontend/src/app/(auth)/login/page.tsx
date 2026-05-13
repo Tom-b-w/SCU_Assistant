@@ -68,6 +68,16 @@ export default function LoginPage() {
     fetchCaptcha();
   }, [fetchCaptcha]);
 
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const reason = params.get("reason");
+    if (reason === "session_expired") {
+      setError("教务系统会话已过期，请重新登录以同步真实教务数据");
+    } else if (reason === "auth_expired") {
+      setError("登录状态已过期，请重新登录");
+    }
+  }, []);
+
   // ---- Password login handler ----
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

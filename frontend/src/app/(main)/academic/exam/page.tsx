@@ -25,7 +25,9 @@ import {
   getReviewPlan,
   type Exam,
   type ExamCreate,
+  type ReviewPlanOptions,
 } from "@/lib/exam";
+import { getKnowledgeBases, type KnowledgeBase } from "@/lib/rag";
 
 const EXAM_TYPE_BADGE: Record<string, string> = {
   期末考试: "bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300",
@@ -63,6 +65,10 @@ export default function ExamPage() {
   // Review plan
   const [reviewPlanLoading, setReviewPlanLoading] = useState<number | null>(null);
   const [reviewPlans, setReviewPlans] = useState<Record<number, string>>({});
+  const [knowledgeBases, setKnowledgeBases] = useState<KnowledgeBase[]>([]);
+  const [reviewPlanKbId, setReviewPlanKbId] = useState<number | "">("");
+  const [reviewDailyHours, setReviewDailyHours] = useState(3);
+  const [reviewIntensity, setReviewIntensity] = useState<"light" | "standard" | "sprint">("standard");
 
   const fetchExams = useCallback(async () => {
     try {
@@ -78,6 +84,12 @@ export default function ExamPage() {
   useEffect(() => {
     fetchExams();
   }, [fetchExams]);
+
+  useEffect(() => {
+    getKnowledgeBases()
+      .then(setKnowledgeBases)
+      .catch(() => setKnowledgeBases([]));
+  }, []);
 
   async function addExam() {
     if (!newCourseName || !newExamDate) return;
@@ -119,8 +131,25 @@ export default function ExamPage() {
   async function generateReviewPlan(examId: number) {
     setReviewPlanLoading(examId);
     try {
-      const result = await getReviewPlan(examId);
-      setReviewPlans((prev) => ({ ...prev, [examId]: result.plan }));
+      const options: ReviewPlanOptions = {
+        daily_hours: reviewDailyHours,
+        intensity: reviewIntensity,
+      };
+      if (reviewPlanKbId) {
+        options.kb_id = reviewPlanKbId;
+      }
+
+      const result = await getReviewPlan(examId, options);
+      const sourceText = result.sources?.length
+        ? `\n\n**参考资料**\n${result.sources
+            .map((source) => `- ${source.filename || "未知文件"}`)
+            .join("\n")}`
+        : "";
+      if (sourceText) {
+        setReviewPlans((prev) => ({ ...prev, [examId]: `${result.plan}${sourceText}` }));
+      } else {
+        setReviewPlans((prev) => ({ ...prev, [examId]: result.plan }));
+      }
     } catch {
       setReviewPlans((prev) => ({ ...prev, [examId]: "生成复习计划失败，请稍后重试。" }));
     } finally {
@@ -232,6 +261,58 @@ export default function ExamPage() {
           </div>
         </div>
       )}
+
+      {/* Review Plan Settings */}
+      <div className="rounded-xl bg-white p-4 shadow-sm ring-1 ring-black/[0.04] dark:bg-gray-900 dark:ring-white/[0.06]">
+        <div className="mb-3 flex items-center gap-2">
+          <Sparkles className="h-4 w-4 text-purple-500" />
+          <h2 className="text-sm font-semibold">复习计划设置</h2>
+        </div>
+        <div className="grid gap-3 md:grid-cols-[1.4fr_0.8fr_1fr]">
+          <label className="space-y-1.5">
+            <span className="text-xs text-muted-foreground">关联知识库</span>
+            <select
+              value={reviewPlanKbId}
+              onChange={(e) => setReviewPlanKbId(e.target.value ? Number(e.target.value) : "")}
+              className="h-10 w-full rounded-lg border border-border/50 bg-background px-3 text-sm"
+            >
+              <option value="">不关联知识库</option>
+              {knowledgeBases.map((kb) => (
+                <option key={kb.id} value={kb.id}>
+                  {kb.name}（{kb.document_count} 个文件）
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="space-y-1.5">
+            <span className="text-xs text-muted-foreground">每日小时</span>
+            <Input
+              type="number"
+              min={0.5}
+              max={12}
+              step={0.5}
+              value={reviewDailyHours}
+              onChange={(e) => setReviewDailyHours(Number(e.target.value) || 3)}
+              className="h-10"
+            />
+          </label>
+          <label className="space-y-1.5">
+            <span className="text-xs text-muted-foreground">复习强度</span>
+            <select
+              value={reviewIntensity}
+              onChange={(e) => setReviewIntensity(e.target.value as "light" | "standard" | "sprint")}
+              className="h-10 w-full rounded-lg border border-border/50 bg-background px-3 text-sm"
+            >
+              <option value="light">轻量</option>
+              <option value="standard">标准</option>
+              <option value="sprint">冲刺</option>
+            </select>
+          </label>
+        </div>
+        <p className="mt-2 text-[11px] text-muted-foreground">
+          选择知识库后，复习计划只会基于该知识库中已上传的课件和资料生成。
+        </p>
+      </div>
 
       {/* Exam List */}
       <div className="space-y-3">

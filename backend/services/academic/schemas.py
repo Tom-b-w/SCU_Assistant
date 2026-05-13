@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import date, datetime
 
 from pydantic import BaseModel
 
@@ -23,3 +23,10 @@ class ExamResponse(BaseModel):
     days_remaining: int
 
     model_config = {"from_attributes": True}
+
+
+class ReviewPlanRequest(BaseModel):
+    kb_id: int | None = None
+    daily_hours: float = 3.0
+    start_date: date | None = None
+    intensity: str = "standard"
