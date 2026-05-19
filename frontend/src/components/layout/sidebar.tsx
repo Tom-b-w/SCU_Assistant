@@ -20,6 +20,8 @@ import {
   CloudSun,
   Bell,
   Newspaper,
+  MapPin,
+  Library,
 } from "lucide-react";
 
 const navGroups = [
@@ -39,12 +41,14 @@ const navGroups = [
       { href: "/academic/exam", label: "考试倒计时", icon: Timer, color: "text-red-500", bg: "bg-red-500/10", activeBg: "bg-red-500" },
       { href: "/academic/rag", label: "课件问答", icon: FileQuestion, color: "text-violet-500", bg: "bg-violet-500/10", activeBg: "bg-violet-500" },
       { href: "/academic/recommend", label: "选课推荐", icon: GraduationCap, color: "text-indigo-500", bg: "bg-indigo-500/10", activeBg: "bg-indigo-500" },
+      { href: "/academic/freeclassroom", label: "空闲教室", icon: MapPin, color: "text-cyan-500", bg: "bg-cyan-500/10", activeBg: "bg-cyan-500" },
     ],
   },
   {
     label: "校园",
     items: [
       { href: "/food/canteen", label: "食堂导航", icon: UtensilsCrossed, color: "text-rose-500", bg: "bg-rose-500/10", activeBg: "bg-rose-500" },
+      { href: "/academic/library", label: "图书馆", icon: Library, color: "text-emerald-500", bg: "bg-emerald-500/10", activeBg: "bg-emerald-500" },
       { href: "/campus/bus", label: "校车时刻", icon: Bus, color: "text-cyan-500", bg: "bg-cyan-500/10", activeBg: "bg-cyan-500" },
       { href: "/campus/calendar", label: "校历", icon: Calendar, color: "text-indigo-500", bg: "bg-indigo-500/10", activeBg: "bg-indigo-500" },
       { href: "/weather", label: "天气穿衣", icon: CloudSun, color: "text-sky-500", bg: "bg-sky-500/10", activeBg: "bg-sky-500" },
