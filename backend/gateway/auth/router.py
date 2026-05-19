@@ -7,6 +7,7 @@ from gateway.auth.schemas import CaptchaResponse, LoginRequest, TokenResponse, U
 from gateway.auth.service import AuthService
 from services.academic.cache_service import fetch_and_cache_all
 from services.academic.jwc_client import get_jwc_client
+from services.library.service import login_to_opac_and_cache
 from shared.cache import redis_client
 from shared.config import settings
 from shared.exceptions import UnauthorizedError
@@ -64,6 +65,9 @@ async def login(
 
     # 登录成功后，后台立即抓取教务数据并缓存到数据库
     background_tasks.add_task(fetch_and_cache_all, user.id, user.student_id)
+
+    # 后台初始化 OPAC 会话并登录，缓存 cookies（永久有效，无需再次输入密码）
+    background_tasks.add_task(login_to_opac_and_cache, body.student_id, body.password)
 
     return TokenResponse(
         access_token=access_token,
