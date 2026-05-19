@@ -28,6 +28,7 @@ type LoginTab = "password" | "qrcode";
 export default function LoginPage() {
   const router = useRouter();
   const setUser = useAuthStore((state) => state.setUser);
+  const logout = useAuthStore((state) => state.logout);
   const [activeTab, setActiveTab] = useState<LoginTab>("password");
 
   // ---- Password login state ----
@@ -65,8 +66,11 @@ export default function LoginPage() {
   }, []);
 
   useEffect(() => {
+    // 每次进入登录页时清理残留的认证状态，避免过期 token 导致自动跳转
+    logout();
+
     fetchCaptcha();
-  }, [fetchCaptcha]);
+  }, [fetchCaptcha, logout]);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
