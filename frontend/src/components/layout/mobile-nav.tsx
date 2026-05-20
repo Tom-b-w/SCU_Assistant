@@ -23,8 +23,8 @@ export function MobileNav() {
   const pathname = usePathname();
 
   return (
-    <nav className="fixed bottom-0 left-0 right-0 z-50 border-t border-border/50 bg-white/90 backdrop-blur-lg dark:bg-gray-950/90 md:hidden">
-      <div className="mx-auto flex max-w-md">
+    <nav className="fixed bottom-0 left-0 right-0 z-50 border-t border-border/50 bg-white/90 pb-[calc(env(safe-area-inset-bottom)+0.35rem)] backdrop-blur-lg dark:bg-gray-950/90 md:hidden">
+      <div className="mx-auto flex max-w-md px-1 pt-1">
         {mobileItems.map((item) => {
           const Icon = item.icon;
           const isActive = pathname === item.href;
@@ -33,7 +33,7 @@ export function MobileNav() {
               key={item.href}
               href={item.href}
               className={cn(
-                "flex flex-1 flex-col items-center gap-0.5 py-2 text-[10px] font-medium transition-colors",
+                "flex min-h-[52px] flex-1 flex-col items-center justify-center gap-0.5 py-2 text-[10px] font-medium transition-colors",
                 isActive
                   ? "text-[#C41230]"
                   : "text-muted-foreground"

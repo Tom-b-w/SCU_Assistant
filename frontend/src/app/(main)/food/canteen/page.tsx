@@ -329,6 +329,14 @@ export default function CanteenPage() {
   const [selectedCategory, setSelectedCategory] = useState<string>("全部");
   const [expandedId, setExpandedId] = useState<number | null>(null);
   const campuses = ["全部", "江安", "望江", "华西"];
+  const getFilterButtonClass = (active: boolean, stretch = false) =>
+    [
+      "rounded-xl border px-3 py-2 text-xs font-medium transition-all duration-200",
+      stretch ? "flex-1 min-w-0" : "",
+      active
+        ? "border-rose-500 bg-rose-500 text-white shadow-[0_10px_24px_-16px_rgba(244,63,94,0.9)]"
+        : "border-border/70 bg-white/90 text-muted-foreground shadow-sm shadow-black/[0.03] hover:border-rose-200 hover:bg-white hover:text-foreground dark:bg-gray-900/80 dark:hover:border-rose-400/40",
+    ].join(" ");
 
   // Recompute visible categories based on selected campus so the category
   // filter only shows categories that exist in the current campus selection.
@@ -373,7 +381,7 @@ export default function CanteenPage() {
       </div>
 
       {/* Campus Filter */}
-      <div className="flex gap-1.5 rounded-xl bg-muted/30 p-1">
+      <div className="flex gap-2 rounded-2xl border border-border/60 bg-muted/20 p-1.5 shadow-sm shadow-black/[0.03]">
         {campuses.map((campus) => (
           <button
             key={campus}
@@ -381,11 +389,7 @@ export default function CanteenPage() {
               setSelectedCampus(campus);
               setSelectedCategory("全部");
             }}
-            className={`flex-1 rounded-lg py-1.5 text-xs font-medium transition-all ${
-              selectedCampus === campus
-                ? "bg-white text-foreground shadow-sm dark:bg-gray-800"
-                : "text-muted-foreground hover:text-foreground"
-            }`}
+            className={getFilterButtonClass(selectedCampus === campus, true)}
           >
             {campus}
           </button>
@@ -393,16 +397,12 @@ export default function CanteenPage() {
       </div>
 
       {/* Category Filter */}
-      <div className="flex flex-wrap gap-1.5 rounded-xl bg-muted/30 p-2">
+      <div className="flex flex-wrap gap-2 rounded-2xl border border-border/60 bg-muted/20 p-2 shadow-sm shadow-black/[0.03]">
         {["全部", ...visibleCategories].map((cat) => (
           <button
             key={cat}
             onClick={() => setSelectedCategory(cat)}
-            className={`rounded-lg px-2.5 py-1.5 text-xs font-medium transition-all ${
-              selectedCategory === cat
-                ? "bg-white text-foreground shadow-sm dark:bg-gray-800"
-                : "text-muted-foreground hover:text-foreground"
-            }`}
+            className={getFilterButtonClass(selectedCategory === cat)}
           >
             {cat}
           </button>

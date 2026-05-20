@@ -81,7 +81,7 @@ export default function WeatherPage() {
 
       {/* Main Weather Card */}
       <div className="rounded-xl bg-gradient-to-br from-sky-500 to-blue-600 p-6 text-white shadow-lg shadow-sky-500/20">
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between gap-4">
           <div>
             <p className="text-sm font-medium opacity-90">{weather.condition}</p>
             <p className="mt-1 text-6xl font-bold tracking-tight">
@@ -91,8 +91,8 @@ export default function WeatherPage() {
               体感 {weather.feels_like}&#176;C
             </p>
           </div>
-          <div className="text-7xl opacity-80">
-            {weather.icon || "🌤"}
+          <div className="shrink-0 rounded-3xl bg-white/12 p-4 backdrop-blur-[1px]">
+            <CloudSun className="h-16 w-16 text-white/85 sm:h-20 sm:w-20" />
           </div>
         </div>
       </div>

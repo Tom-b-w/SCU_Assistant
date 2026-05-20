@@ -3,7 +3,7 @@
 import { useState } from "react";
 import {
   GraduationCap,
-  Sparkles,
+  NotebookPen,
   Loader2,
   Target,
   BookOpen,
@@ -67,7 +67,7 @@ export default function CourseRecommendPage() {
         <div className="rounded-xl bg-gradient-to-br from-indigo-500/[0.06] via-purple-500/[0.04] to-indigo-500/[0.06] p-6 ring-1 ring-indigo-500/15">
           <div className="flex flex-col items-center text-center">
             <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-indigo-500 to-purple-600 text-white shadow-lg shadow-indigo-500/20">
-              <Sparkles className="h-8 w-8" />
+              <NotebookPen className="h-8 w-8" />
             </div>
             <h2 className="mt-4 text-lg font-semibold">智能选课分析</h2>
             <p className="mt-2 max-w-md text-sm text-muted-foreground">
@@ -77,7 +77,7 @@ export default function CourseRecommendPage() {
               onClick={generateRecommendation}
               className="mt-5 inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-indigo-500 to-purple-600 px-6 py-2.5 text-sm font-medium text-white shadow-md shadow-indigo-500/20 transition-all hover:shadow-lg hover:brightness-110 active:scale-[0.98]"
             >
-              <Sparkles className="h-4 w-4" />
+              <NotebookPen className="h-4 w-4" />
               开始分析
             </button>
           </div>
@@ -152,7 +152,7 @@ export default function CourseRecommendPage() {
           <div className="rounded-xl bg-white p-5 shadow-sm ring-1 ring-black/[0.04] dark:bg-gray-900 dark:ring-white/[0.06]">
             <div className="flex items-center gap-2 mb-4">
               <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-indigo-500/10">
-                <Sparkles className="h-4 w-4 text-indigo-500" />
+                <NotebookPen className="h-4 w-4 text-indigo-500" />
               </div>
               <h3 className="font-semibold">AI 选课建议</h3>
             </div>
@@ -170,7 +170,7 @@ export default function CourseRecommendPage() {
               disabled={loading}
               className="flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-50"
             >
-              <Sparkles className="h-4 w-4" />
+              <NotebookPen className="h-4 w-4" />
               重新生成
             </button>
           </div>

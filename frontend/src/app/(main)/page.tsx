@@ -17,6 +17,8 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { useAuthStore } from "@/stores/auth-store";
+import { getCreditProgressPercent } from "@/lib/credit-progress";
+import { getCourseTimeRange } from "@/lib/schedule";
 import {
   getSchedule,
   getScores,
@@ -45,15 +47,6 @@ const COURSE_ACCENT_GRADIENTS = [
   "from-amber-400 to-amber-600",
   "from-indigo-400 to-indigo-600",
 ];
-
-function sectionToTime(section: number): string {
-  const map: Record<number, string> = {
-    1: "08:00", 2: "08:55", 3: "10:10", 4: "11:05",
-    5: "14:00", 6: "14:55", 7: "16:10", 8: "17:05",
-    9: "19:00", 10: "19:55", 11: "20:50",
-  };
-  return map[section] || `第${section}节`;
-}
 
 function getScoreBadge(score: string) {
   const num = parseFloat(score);
@@ -133,7 +126,9 @@ export default function DashboardPage() {
     };
   }, [isAuthenticated]);
 
-  const todayCourses = courses.filter((c) => c.weekday === todayWeekday);
+  const todayCourses = courses
+    .filter((c) => c.weekday === todayWeekday)
+    .sort((a, b) => a.start_section - b.start_section || a.end_section - b.end_section);
   const totalCredits = scores.reduce((sum, s) => sum + s.credit, 0);
   const weightedSum = scores.reduce((sum, s) => {
     const n = parseFloat(s.score);
@@ -146,7 +141,7 @@ export default function DashboardPage() {
 
   const hasRequiredCredits = planCompletion && planCompletion.total_required_credits > 0;
   const creditProgress = hasRequiredCredits
-    ? Math.min(100, Math.round((planCompletion.earned_credits / planCompletion.total_required_credits) * 100))
+    ? getCreditProgressPercent(planCompletion.earned_credits, planCompletion.total_required_credits)
     : 0;
 
   const earnedCreditsDisplay = loading
@@ -165,11 +160,11 @@ export default function DashboardPage() {
   ];
 
   const firstCourseInfo = todayCourses.length > 0
-    ? `第一节课 ${sectionToTime(todayCourses[0].start_section)} 在 ${todayCourses[0].location}。`
+    ? `第一节课 ${getCourseTimeRange(todayCourses[0])} 在 ${todayCourses[0].location}。`
     : "今天没有课，好好休息！";
 
   return (
-    <div className="mx-auto max-w-6xl space-y-6">
+    <div className="mx-auto max-w-6xl space-y-6 pb-5 md:pb-0">
       {/* Welcome Section */}
       <div className="animate-gradient relative overflow-hidden rounded-2xl bg-gradient-to-br from-[#C41230] via-[#E8173A] to-[#9E0E26] p-6 text-white shadow-lg shadow-[#C41230]/20 md:p-8">
         <div
@@ -296,9 +291,7 @@ export default function DashboardPage() {
               </div>
             ) : (
               <div className="space-y-2">
-                {todayCourses
-                  .sort((a, b) => a.start_section - b.start_section)
-                  .map((item, i) => (
+                {todayCourses.map((item, i) => (
                     <div key={i} className="group flex items-center gap-3 rounded-xl border border-transparent bg-muted/30 p-3 transition-all duration-200 hover:border-black/[0.04] hover:bg-muted/50 hover:shadow-sm dark:hover:border-white/[0.06]">
                       <div className={`h-full min-h-[2.5rem] w-1.5 rounded-full bg-gradient-to-b ${COURSE_ACCENT_GRADIENTS[i % COURSE_ACCENT_GRADIENTS.length]}`} />
                       <div className="flex-1 min-w-0">
@@ -308,7 +301,7 @@ export default function DashboardPage() {
                       <div className="flex flex-col items-end gap-0.5 text-xs text-muted-foreground">
                         <div className="flex items-center gap-1 font-medium text-foreground/70">
                           <Clock className="h-3 w-3" />
-                          {sectionToTime(item.start_section)}
+                          {getCourseTimeRange(item)}
                         </div>
                         <span className="text-[0.65rem]">第{item.start_section}-{item.end_section}节</span>
                       </div>
@@ -369,14 +362,20 @@ export default function DashboardPage() {
                     "rgba(236, 72, 153, 0.3)",
                     "rgba(6, 182, 212, 0.3)",
                   ];
-                  const barWidth = planCompletion.earned_credits > 0
-                    ? Math.round((cat.earned_credits / planCompletion.earned_credits) * 100)
-                    : 0;
+                  const catHasRequired = cat.required_credits > 0;
+                  const barWidth = catHasRequired
+                    ? getCreditProgressPercent(cat.earned_credits, cat.required_credits)
+                    : planCompletion.earned_credits > 0
+                      ? Math.round((cat.earned_credits / planCompletion.earned_credits) * 100)
+                      : 0;
                   return (
                     <div key={i}>
                       <div className="flex justify-between text-xs mb-1.5">
                         <span className="text-muted-foreground">{cat.name}</span>
-                        <span className="font-semibold">{cat.earned_credits} 学分</span>
+                        <span className="font-semibold">
+                          {cat.earned_credits}
+                          {catHasRequired ? ` / ${cat.required_credits} 学分` : " 学分"}
+                        </span>
                       </div>
                       <div className="relative h-2.5 w-full rounded-full bg-muted/50 overflow-hidden">
                         <div
@@ -479,21 +478,29 @@ export default function DashboardPage() {
       {/* AI Suggestion Banner */}
       <Link
         href="/chat"
-        className="animate-gradient group relative flex items-center gap-4 overflow-hidden rounded-xl bg-gradient-to-r from-purple-500/5 via-blue-500/5 to-cyan-500/5 p-5 ring-1 ring-purple-500/20 transition-all duration-300 hover:from-purple-500/10 hover:via-blue-500/10 hover:to-cyan-500/10 hover:shadow-lg hover:shadow-purple-500/10 hover:ring-purple-500/30"
+        className="animate-gradient group relative flex flex-col items-stretch gap-2.5 overflow-hidden rounded-xl bg-gradient-to-r from-purple-500/5 via-blue-500/5 to-cyan-500/5 p-4 ring-1 ring-purple-500/20 transition-all duration-300 hover:from-purple-500/10 hover:via-blue-500/10 hover:to-cyan-500/10 hover:shadow-lg hover:shadow-purple-500/10 hover:ring-purple-500/30 sm:flex-row sm:items-center sm:gap-4 sm:p-5"
       >
         <div className="animate-gradient pointer-events-none absolute inset-0 -z-10 bg-gradient-to-r from-purple-500/10 via-blue-500/10 to-cyan-500/10 opacity-0 blur-xl transition-opacity duration-500 group-hover:opacity-100" />
-        <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-purple-500 via-violet-500 to-blue-500 text-white shadow-lg shadow-purple-500/25 transition-transform duration-300 group-hover:scale-110">
-          <Sparkles className="h-5 w-5" />
+        <div className="flex w-full items-start gap-3 sm:w-auto sm:flex-none sm:gap-4">
+          <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-purple-500 via-violet-500 to-blue-500 text-white shadow-lg shadow-purple-500/25 transition-transform duration-300 group-hover:scale-110">
+            <Sparkles className="h-5 w-5" />
+          </div>
+          <div className="min-w-0 flex-1 sm:hidden">
+            <p className="font-semibold text-foreground">AI 智能助手</p>
+            <p className="mt-0.5 line-clamp-2 text-sm text-muted-foreground">
+              {"\u201C根据你的课表和成绩分析，提供个性化学业建议\u201D"}
+            </p>
+          </div>
         </div>
-        <div className="flex-1 min-w-0">
+        <div className="hidden min-w-0 flex-1 sm:block">
           <p className="font-semibold text-foreground">AI 智能助手</p>
-          <p className="mt-0.5 text-sm text-muted-foreground truncate">
+          <p className="mt-0.5 truncate text-sm text-muted-foreground">
             {"\u201C根据你的课表和成绩分析，提供个性化学业建议\u201D"}
           </p>
         </div>
-        <div className="flex items-center gap-1 text-sm font-medium text-primary transition-transform duration-300 group-hover:translate-x-1">
+        <div className="flex w-full items-center justify-end gap-1 text-sm font-medium text-primary transition-transform duration-300 group-hover:translate-x-1 sm:w-auto">
           <TrendingUp className="h-4 w-4" />
-          <span className="hidden sm:inline">开始对话</span>
+          <span>开始对话</span>
         </div>
       </Link>
     </div>

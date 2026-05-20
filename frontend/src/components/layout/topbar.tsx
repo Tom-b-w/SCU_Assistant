@@ -142,10 +142,13 @@ export function Topbar() {
   }
 
   return (
-    <header className="flex h-16 items-center justify-between border-b border-border/40 bg-white/80 px-6 backdrop-blur-xl dark:bg-gray-950/80">
+    <header className="relative z-30 flex h-16 shrink-0 items-center justify-between border-b border-border/40 bg-white/80 px-6 backdrop-blur-xl dark:bg-gray-950/80">
       {/* Search */}
       <div className="flex flex-1 items-center gap-4">
-        <div ref={searchRef} className="relative w-full max-w-lg">
+        <div
+          ref={searchRef}
+          className="relative min-w-0 w-full max-w-lg lg:absolute lg:left-1/2 lg:w-[32rem] lg:max-w-[calc(100%-8rem)] lg:-translate-x-1/2"
+        >
           <div className={`relative rounded-xl transition-all duration-300 ${searchFocused ? "ring-2 ring-primary/20 shadow-sm shadow-primary/5" : ""}`}>
             <Search className={`absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 transition-colors duration-200 ${searchFocused ? "text-primary/70" : "text-muted-foreground/50"}`} />
             <Input

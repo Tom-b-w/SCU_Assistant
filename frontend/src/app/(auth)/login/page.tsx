@@ -178,24 +178,24 @@ export default function LoginPage() {
         ? "text-green-300"
         : qrStatus === 3
           ? "text-red-300"
-          : "text-white/60";
+          : "text-white/72";
 
   return (
     <div className="mx-auto flex w-full max-w-[420px] flex-col items-center animate-scale-in">
       {/* Logo & Branding */}
       <div className="mb-8 flex flex-col items-center text-white">
-        <div className="mb-4 flex h-20 w-20 items-center justify-center rounded-2xl bg-white/10 shadow-2xl backdrop-blur-sm ring-1 ring-white/20">
+        <div className="mb-4 flex h-20 w-20 items-center justify-center rounded-2xl bg-white/14 shadow-2xl backdrop-blur-sm ring-1 ring-white/24">
           <GraduationCap className="h-10 w-10 text-[#D4A843]" />
         </div>
         <h1 className="text-3xl font-bold tracking-tight">SCU Assistant</h1>
-        <p className="mt-1 text-sm text-white/60">四川大学智能校园助手</p>
+        <p className="mt-1 text-sm text-white/72">四川大学智能校园助手</p>
       </div>
 
       {/* Login Card - Glassmorphism */}
-      <div className="w-full rounded-2xl border border-white/10 bg-white/[0.07] p-8 shadow-2xl backdrop-blur-xl">
+      <div className="w-full rounded-2xl border border-white/16 bg-[linear-gradient(180deg,rgba(255,255,255,0.16),rgba(255,255,255,0.10))] p-8 shadow-[0_28px_70px_rgba(74,8,20,0.34)] backdrop-blur-2xl">
         <div className="mb-6 text-center">
           <h2 className="text-xl font-semibold text-white">欢迎回来</h2>
-          <p className="mt-1 text-sm text-white/50">
+          <p className="mt-1 text-sm text-white/72">
             {activeTab === "password"
               ? "使用教务系统账号登录"
               : "使用学习通扫码登录"}
@@ -203,14 +203,14 @@ export default function LoginPage() {
         </div>
 
         {/* Tab Switcher */}
-        <div className="mb-6 flex rounded-xl bg-white/[0.06] p-1 ring-1 ring-white/10">
+        <div className="mb-6 flex rounded-xl bg-white/[0.08] p-1 ring-1 ring-white/14">
           <button
             type="button"
             onClick={() => setActiveTab("password")}
             className={`flex flex-1 items-center justify-center gap-2 rounded-lg py-2.5 text-sm font-medium transition-all ${
               activeTab === "password"
-                ? "bg-white/[0.12] text-white shadow-sm ring-1 ring-white/10"
-                : "text-white/40 hover:text-white/60"
+                ? "bg-white/[0.16] text-white shadow-sm ring-1 ring-white/14"
+                : "text-white/55 hover:text-white/75"
             }`}
           >
             <KeyRound className="h-4 w-4" />
@@ -221,8 +221,8 @@ export default function LoginPage() {
             onClick={() => setActiveTab("qrcode")}
             className={`flex flex-1 items-center justify-center gap-2 rounded-lg py-2.5 text-sm font-medium transition-all ${
               activeTab === "qrcode"
-                ? "bg-white/[0.12] text-white shadow-sm ring-1 ring-white/10"
-                : "text-white/40 hover:text-white/60"
+                ? "bg-white/[0.16] text-white shadow-sm ring-1 ring-white/14"
+                : "text-white/55 hover:text-white/75"
             }`}
           >
             <QrCode className="h-4 w-4" />
@@ -246,7 +246,7 @@ export default function LoginPage() {
                 value={studentId}
                 onChange={(e) => setStudentId(e.target.value)}
                 required
-                className="h-11 border-white/10 bg-white/[0.06] text-white placeholder:text-white/30 focus-visible:border-[#D4A843]/50 focus-visible:ring-[#D4A843]/30"
+                className="h-11 border-white/14 bg-white/[0.08] text-white placeholder:text-white/45 focus-visible:border-[#D4A843]/50 focus-visible:ring-[#D4A843]/30"
               />
             </div>
 
@@ -265,12 +265,12 @@ export default function LoginPage() {
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   required
-                  className="h-11 border-white/10 bg-white/[0.06] pr-10 text-white placeholder:text-white/30 focus-visible:border-[#D4A843]/50 focus-visible:ring-[#D4A843]/30"
+                  className="h-11 border-white/14 bg-white/[0.08] pr-10 text-white placeholder:text-white/45 focus-visible:border-[#D4A843]/50 focus-visible:ring-[#D4A843]/30"
                 />
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-white/40 hover:text-white/70 transition-colors"
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-white/55 transition-colors hover:text-white/85"
                 >
                   {showPassword ? (
                     <EyeOff className="h-4 w-4" />
@@ -296,17 +296,17 @@ export default function LoginPage() {
                   value={captcha}
                   onChange={(e) => setCaptcha(e.target.value)}
                   required
-                  className="h-11 flex-1 border-white/10 bg-white/[0.06] text-white placeholder:text-white/30 focus-visible:border-[#D4A843]/50 focus-visible:ring-[#D4A843]/30"
+                  className="h-11 flex-1 border-white/14 bg-white/[0.08] text-white placeholder:text-white/45 focus-visible:border-[#D4A843]/50 focus-visible:ring-[#D4A843]/30"
                   maxLength={6}
                 />
                 <button
                   type="button"
                   onClick={fetchCaptcha}
-                  className="relative flex h-11 w-28 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-white/10 bg-white/[0.06] transition-all hover:bg-white/[0.12]"
+                  className="relative flex h-11 w-28 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-white/14 bg-white/[0.08] transition-all hover:bg-white/[0.15]"
                   disabled={captchaLoading}
                 >
                   {captchaLoading ? (
-                    <RefreshCw className="h-4 w-4 animate-spin text-white/50" />
+                    <RefreshCw className="h-4 w-4 animate-spin text-white/60" />
                   ) : captchaImage ? (
                     // eslint-disable-next-line @next/next/no-img-element
                     <img
@@ -315,11 +315,11 @@ export default function LoginPage() {
                       className="h-full w-full object-contain"
                     />
                   ) : (
-                    <span className="text-xs text-white/40">点击获取</span>
+                    <span className="text-xs text-white/55">点击获取</span>
                   )}
                 </button>
               </div>
-              <p className="text-[11px] text-white/30">
+              <p className="text-[11px] text-white/58">
                 看不清？点击验证码图片刷新
               </p>
             </div>
@@ -351,7 +351,7 @@ export default function LoginPage() {
         {activeTab === "qrcode" && (
           <div className="flex flex-col items-center gap-5">
             {/* QR Code Display */}
-            <div className="relative flex h-[200px] w-[200px] items-center justify-center overflow-hidden rounded-xl border-2 border-dashed border-white/15 bg-white/[0.04]">
+            <div className="relative flex h-[200px] w-[200px] items-center justify-center overflow-hidden rounded-xl border-2 border-dashed border-white/20 bg-white/[0.06]">
               {qrData ? (
                 <>
                   {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -390,7 +390,7 @@ export default function LoginPage() {
                   {qrStatus === 3 && (
                     <div className="absolute inset-0 flex items-center justify-center rounded-xl bg-black/60 backdrop-blur-sm">
                       <div className="flex flex-col items-center gap-2">
-                        <span className="text-sm text-white/60">
+                        <span className="text-sm text-white/75">
                           二维码已过期
                         </span>
                         <button
@@ -409,11 +409,11 @@ export default function LoginPage() {
                   )}
                 </>
               ) : qrLoading ? (
-                <Loader2 className="h-8 w-8 animate-spin text-white/30" />
+                <Loader2 className="h-8 w-8 animate-spin text-white/45" />
               ) : (
                 <button
                   onClick={startQRLogin}
-                  className="text-sm text-white/40 hover:text-white/60 transition-colors"
+                  className="text-sm text-white/58 transition-colors hover:text-white/78"
                 >
                   点击加载二维码
                 </button>
@@ -433,9 +433,9 @@ export default function LoginPage() {
             )}
 
             {/* Instructions */}
-            <div className="w-full space-y-2 rounded-xl bg-white/[0.04] px-4 py-3 ring-1 ring-white/10">
-              <p className="text-xs font-medium text-white/50">使用步骤</p>
-              <div className="space-y-1.5 text-xs text-white/35">
+            <div className="w-full space-y-2 rounded-xl bg-white/[0.06] px-4 py-3 ring-1 ring-white/12">
+              <p className="text-xs font-medium text-white/72">使用步骤</p>
+              <div className="space-y-1.5 text-xs text-white/60">
                 <p>1. 打开学习通 App</p>
                 <p>2. 点击右上角扫一扫</p>
                 <p>3. 扫描上方二维码并在手机上确认</p>
@@ -445,14 +445,14 @@ export default function LoginPage() {
         )}
 
         {/* Feature hints */}
-        <div className="mt-6 flex items-center justify-center gap-2 text-xs text-white/30">
+        <div className="mt-6 flex items-center justify-center gap-2 rounded-full bg-white/[0.08] px-3 py-2 text-xs text-white/60 ring-1 ring-white/10">
           <Sparkles className="h-3 w-3" />
           <span>AI 驱动 · 课表查询 · DDL管理 · 食堂导航</span>
         </div>
       </div>
 
       {/* Footer */}
-      <p className="mt-6 text-xs text-white/25">
+      <p className="mt-6 text-xs tracking-[0.01em] text-white/52">
         Powered by AI · 四川大学计算机学院
       </p>
     </div>

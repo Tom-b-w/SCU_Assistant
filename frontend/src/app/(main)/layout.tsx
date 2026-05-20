@@ -9,7 +9,7 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
       <Sidebar />
       <div className="flex flex-1 flex-col overflow-hidden">
         <Topbar />
-        <main className="flex-1 overflow-auto p-6 pb-20 md:pb-6">
+        <main className="flex-1 overflow-auto p-6 pb-[calc(env(safe-area-inset-bottom)+5.5rem)] md:pb-6">
           <PageTransition>{children}</PageTransition>
         </main>
       </div>
