@@ -7,6 +7,7 @@ import {
   Calendar,
   RefreshCw,
   Inbox,
+  AlertCircle,
 } from "lucide-react";
 import { getNotifications, type NotificationItem } from "@/lib/notification";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -48,127 +49,124 @@ export default function NotificationPage() {
   }, [fetchNotifications]);
 
   return (
-    <div className="mx-auto max-w-3xl space-y-4">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-pink-500/10">
-            <Bell className="h-5 w-5 text-pink-500" />
+    <div className="mx-auto max-w-3xl space-y-5 pb-10">
+      {/* 顶部标题区域 */}
+      <div className="bg-white dark:bg-gray-900 rounded-2xl p-5 shadow-sm border border-gray-100 dark:border-gray-800">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="h-10 w-10 rounded-xl bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center">
+              <Bell className="h-5 w-5 text-blue-600 dark:text-blue-300" />
+            </div>
+            <div>
+              <h1 className="text-lg font-bold text-gray-800 dark:text-white">校园通知中心</h1>
+              <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                实时查看学校最新公告
+              </p>
+            </div>
           </div>
-          <div>
-            <h1 className="text-xl font-bold">校园通知</h1>
-            <p className="text-xs text-muted-foreground">
-              来自各部门的最新通知公告
-            </p>
-          </div>
-        </div>
-        <button
-          onClick={fetchNotifications}
-          className="flex items-center gap-1 rounded-xl px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-        >
-          <RefreshCw className="h-3.5 w-3.5" />
-          刷新
-        </button>
-      </div>
-
-      {/* Source Filter */}
-      <div className="flex gap-1 rounded-xl bg-muted/30 p-1">
-        {SOURCE_FILTERS.map((f) => (
           <button
-            key={f.label}
-            onClick={() => setSource(f.key)}
-            className={`flex-1 rounded-lg py-1.5 text-xs font-medium transition-all ${
-              source === f.key
-                ? "bg-white text-foreground shadow-sm dark:bg-gray-800"
-                : "text-muted-foreground hover:text-foreground"
-            }`}
+            onClick={fetchNotifications}
+            disabled={loading}
+            className="rounded-lg px-3 py-2 bg-gray-100 hover:bg-gray-200 dark:bg-gray-800 dark:hover:bg-gray-700 text-xs flex items-center gap-1.5"
           >
-            {f.label}
+            <RefreshCw className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`} />
+            刷新
           </button>
-        ))}
+        </div>
       </div>
 
-      {/* Error */}
+      {/* 分类筛选 */}
+      <div className="bg-white dark:bg-gray-900 rounded-2xl p-4 shadow-sm border border-gray-100 dark:border-gray-800">
+        <div className="grid grid-cols-4 gap-2">
+          {SOURCE_FILTERS.map((f) => (
+            <button
+              key={f.label}
+              onClick={() => setSource(f.key)}
+              className={`rounded-lg py-2 text-xs font-medium transition-all ${
+                source === f.key
+                  ? "bg-blue-500 text-white"
+                  : "bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300"
+              }`}
+            >
+              {f.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* 错误提示 */}
       {error && (
-        <div className="flex items-center gap-2 rounded-lg bg-red-500/10 px-4 py-3 text-sm text-red-600 ring-1 ring-red-500/20 dark:text-red-400">
-          {error}
-          <button onClick={fetchNotifications} className="ml-auto text-xs underline hover:no-underline">重试</button>
+        <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-2xl p-4 flex items-center gap-3">
+          <AlertCircle className="h-5 w-5 text-red-500" />
+          <p className="text-xs text-red-600 dark:text-red-300 flex-1">{error}</p>
+          <button onClick={fetchNotifications} className="text-xs bg-white px-2 py-1 rounded-md border">
+            重试
+          </button>
         </div>
       )}
 
-      {/* Notification List */}
-      {loading ? (
-        <div className="space-y-2">
-          {Array.from({ length: 4 }).map((_, i) => (
-            <div key={i} className="rounded-xl bg-white p-4 shadow-sm ring-1 ring-black/[0.04] dark:bg-gray-900 dark:ring-white/[0.06]">
-              <div className="flex items-start gap-3">
-                <div className="flex-1 space-y-2">
-                  <div className="flex items-center gap-2">
-                    <Skeleton className="h-4 w-48" />
-                    <Skeleton className="h-4 w-12 rounded-full" />
-                  </div>
-                  <Skeleton className="h-3 w-full" />
-                  <Skeleton className="h-3 w-24" />
-                </div>
-              </div>
+      {/* 列表区域 */}
+      <div className="space-y-3">
+        {loading ? (
+          Array.from({ length: 4 }).map((_, i) => (
+            <div key={i} className="bg-white dark:bg-gray-900 rounded-2xl p-5 shadow-sm border border-gray-100 dark:border-gray-800">
+              <Skeleton className="h-4 w-3/4 mb-2" />
+              <Skeleton className="h-3 w-full mb-2" />
+              <Skeleton className="h-3 w-1/4" />
             </div>
-          ))}
-        </div>
-      ) : notifications.length === 0 ? (
-        <div className="rounded-xl bg-white p-12 text-center shadow-sm ring-1 ring-black/[0.04] dark:bg-gray-900 dark:ring-white/[0.06]">
-          <Inbox className="mx-auto h-12 w-12 text-muted-foreground/30" />
-          <p className="mt-4 text-muted-foreground">暂无通知</p>
-        </div>
-      ) : (
-        <div className="stagger-children space-y-2">
-          {notifications.map((n) => {
+          ))
+        ) : notifications.length === 0 ? (
+          <div className="bg-white dark:bg-gray-900 rounded-2xl p-10 text-center border border-gray-100 dark:border-gray-800">
+            <Inbox className="h-10 w-10 text-gray-300 dark:text-gray-600 mx-auto mb-3" />
+            <p className="text-sm text-gray-500 dark:text-gray-400">暂无通知</p>
+          </div>
+        ) : (
+          notifications.map((n) => {
             const badge = SOURCE_BADGE[n.source] || "bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300";
             return (
               <div
                 key={n.id}
-                className="group rounded-xl bg-white p-4 shadow-sm ring-1 ring-black/[0.04] transition-all hover:shadow-md dark:bg-gray-900 dark:ring-white/[0.06]"
+                className="bg-white dark:bg-gray-900 rounded-2xl p-5 shadow-sm border border-gray-100 dark:border-gray-800 hover:shadow-md transition-all"
               >
-                <div className="flex items-start gap-3">
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
-                      <h3 className="text-sm font-semibold truncate">{n.title}</h3>
-                      <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-medium ${badge}`}>
+                <div className="flex justify-between items-start gap-4">
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2 flex-wrap mb-2">
+                      <h3 className="text-sm font-semibold text-gray-800 dark:text-white truncate">
+                        {n.title}
+                      </h3>
+                      <span className={`rounded-full px-2 py-0.5 text-[10px] ${badge}`}>
                         {n.source}
                       </span>
                     </div>
+
                     {n.summary && (
-                      <p className="mt-1.5 text-xs text-muted-foreground line-clamp-2 leading-relaxed">
+                      <p className="text-xs text-gray-500 dark:text-gray-400 line-clamp-2 mb-2.5">
                         {n.summary}
                       </p>
                     )}
-                    <div className="mt-2 flex items-center gap-3 text-[11px] text-muted-foreground/70">
-                      {n.published_at && (
-                        <span className="flex items-center gap-1">
-                          <Calendar className="h-3 w-3" />
-                          {new Date(n.published_at).toLocaleDateString("zh-CN", {
-                            month: "short",
-                            day: "numeric",
-                          })}
-                        </span>
-                      )}
+
+                    <div className="flex items-center text-[11px] text-gray-400 dark:text-gray-500">
+                      <Calendar className="h-3 w-3 mr-1" />
+                      {n.published_at ? new Date(n.published_at).toLocaleDateString("zh-CN") : "-"}
                     </div>
                   </div>
+
                   {n.url && (
                     <a
                       href={n.url}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="shrink-0 rounded-lg p-2 text-muted-foreground/50 transition-colors hover:bg-primary/10 hover:text-primary"
+                      className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800"
                     >
-                      <ExternalLink className="h-4 w-4" />
+                      <ExternalLink className="h-4 w-4 text-gray-500" />
                     </a>
                   )}
                 </div>
               </div>
             );
-          })}
-        </div>
-      )}
+          })
+        )}
+      </div>
     </div>
   );
 }
